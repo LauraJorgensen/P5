@@ -44,10 +44,10 @@ for h in range(24):
     plt.figure(figsize=(10, 3))
     plt.plot(series_h.index, series_h.values, marker='o', linestyle='-', linewidth=1)
     plt.title(f"Hourly series - Hour {h}")
-    plt.xlabel('Timestamp')
-    plt.ylabel(target_col)
+    plt.xlabel('Time')
+    plt.ylabel('PV Production')
     plt.tight_layout()
-    plt.savefig(f"hourly_series_plots/hour_{h}_series.png")
+    plt.savefig(f"hourly_series_plots/hour_{h}_series.pdf")
     plt.close()
 print("Hourly series plots saved to folder 'hourly_series_plots/'.")
 
@@ -92,19 +92,19 @@ for h in range(24):
     hour_results[h] = best_res
 
 # --- Diagnostics (AIC, BIC, Ljung-Box) pr. time ---
-model_diagnostics = {}
+arima_model = {}
 
 for h in range(24):
     res = hour_results.get(h)
     if res is None:
-        model_diagnostics[h] = None
+        arima_model[h] = None
         continue
 
     aic = res.aic
     bic = res.bic
     ljung = acorr_ljungbox(res.resid, lags=[10], return_df=True)
 
-    model_diagnostics[h] = {
+    arima_model[h] = {
         'AIC': aic,
         'BIC': bic,
         'Order': best_orders[h],
@@ -113,7 +113,7 @@ for h in range(24):
 
 print("\n--- Model Diagnostics per hour (auto-selected, no exog) ---")
 for h in range(24):
-    diag = model_diagnostics[h]
+    diag = arima_model[h]
     if diag is None:
         print(f"Hour {h}: no model (insufficient data)")
     else:
@@ -135,7 +135,7 @@ for h in range(24):
     plt.plot(res.resid)
     plt.title(f"Residuals Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"residual_plots/hour_{h}_residuals.png")
+    plt.savefig(f"residual_plots/hour_{h}_residuals.pdf")
     plt.close()
 
 print("Residual plots saved to folder 'residual_plots/'.")
@@ -155,7 +155,7 @@ for h in range(24):
     plot_pacf(y_train_h, ax=axes[1], method='ywm', alpha=None)
     axes[1].set_title(f"PACF Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"acf_pacf_plots/hour_{h}_acf_pacf.png")
+    plt.savefig(f"acf_pacf_plots/hour_{h}_acf_pacf.pdf")
     plt.close()
 
 print("ACF/PACF plots saved to folder 'acf_pacf_plots/'.")
@@ -173,7 +173,7 @@ for h in range(24):
     qqplot(res.resid, line='s', ax=plt.gca())
     plt.title(f"QQ Plot Residuals Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"qq_plots/hour_{h}_qqplot.png")
+    plt.savefig(f"qq_plots/hour_{h}_qqplot.pdf")
     plt.close()
 
 print("QQ plots saved to folder 'qq_plots/'.")
@@ -220,10 +220,29 @@ preds_15min_from_hour = preds_hour_series.reindex(y_val.index, method='ffill')
 preds_15min_lower = preds_hour_lower_series.reindex(y_val.index, method='ffill')
 preds_15min_upper = preds_hour_upper_series.reindex(y_val.index, method='ffill')
 
-rmse_hour_mapped = math.sqrt(mean_squared_error(y_val, preds_15min_from_hour))
-mae_hour_mapped = mean_absolute_error(y_val, preds_15min_from_hour)
-print(f"\nRMSE mapped 15-min (no exog, multi-step hourly): {rmse_hour_mapped:.3f}")
-print(f"MAE mapped 15-min (no exog, multi-step hourly): {mae_hour_mapped:.3f}")
+# --- Brug kun den sidste 24 dag ---
+last_n = 96
+y_val_last = y_val.tail(last_n)
+preds_last = preds_15min_from_hour.tail(last_n)
+
+rmse_hour_mapped = math.sqrt(mean_squared_error(y_val_last, preds_last))
+mae_hour_mapped = mean_absolute_error(y_val_last, preds_last)
+
+print(f"\nRMSE: {rmse_hour_mapped:.3f}")
+print(f"MAE: {mae_hour_mapped:.3f}")
+
+
+
+# ============================================================
+# MODEL DIAGNOSTICS PER HOUR
+# Residual time plot, QQ plot, histogram, and prediction-error plot
+# ============================================================
+
+os.makedirs('arima_model', exist_ok=True)
+os.makedirs('arima_model/residual_timeseries', exist_ok=True)
+os.makedirs('arima_model/qq_plots', exist_ok=True)
+os.makedirs('arima_model/histograms', exist_ok=True)
+os.makedirs('arima_model/error_plots', exist_ok=True)
 
 # --- Plot forecast vs obs ---
 plot_n = 24 * 4  # vis kun sidste 36 timer (144 punkter)
@@ -238,20 +257,10 @@ plt.plot(preds_plot.index, preds_plot, label='Prediction')
 plt.fill_between(preds_plot.index, preds_plot_lower, preds_plot_upper, alpha=0.2, label='95% CI')
 plt.legend()
 plt.tight_layout()
-plt.show()
+plt.savefig(f"arima_model/plot.pdf")
+plt.close()
 
 
-
-# ============================================================
-# MODEL DIAGNOSTICS PER HOUR
-# Residual time plot, QQ plot, histogram, and prediction-error plot
-# ============================================================
-
-os.makedirs('model_diagnostics', exist_ok=True)
-os.makedirs('model_diagnostics/residual_timeseries', exist_ok=True)
-os.makedirs('model_diagnostics/qq_plots', exist_ok=True)
-os.makedirs('model_diagnostics/histograms', exist_ok=True)
-os.makedirs('model_diagnostics/error_plots', exist_ok=True)
 
 from statsmodels.graphics.gofplots import qqplot
 
@@ -269,7 +278,7 @@ for h in range(24):
     plt.axhline(0, color='black', linewidth=0.8)
     plt.title(f"Residual Time Series - Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"model_diagnostics/residual_timeseries/hour_{h}_residuals.png")
+    plt.savefig(f"arima_model/residual_timeseries/hour_{h}_residuals.pdf")
     plt.close()
 
     # 2. QQ plot ----------------------------------------------
@@ -283,7 +292,7 @@ for h in range(24):
             line.set_markersize(3)
     plt.title(f"QQ Plot - Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"model_diagnostics/qq_plots/hour_{h}_qq.png")
+    plt.savefig(f"arima_model/qq_plots/hour_{h}_qq.pdf")
     plt.close()
 
     # 3. Histogram of residuals --------------------------------
@@ -295,7 +304,7 @@ for h in range(24):
     plt.ylabel("Frequency")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f"model_diagnostics/histograms/hour_{h}_hist.png")
+    plt.savefig(f"arima_model/histograms/hour_{h}_hist.pdf")
     plt.close()
 
     # 4. Prediction-error plot: residuals vs. fitted values -----
@@ -314,7 +323,7 @@ for h in range(24):
     plt.xlabel("Fitted values (1-step ahead)")
     plt.ylabel("Residuals")
     plt.tight_layout()
-    plt.savefig(f"model_diagnostics/error_plots/hour_{h}_errorplot.png")
+    plt.savefig(f"arima_model/error_plots/hour_{h}_errorplot.pdf")
     plt.close()
 
-print("Full diagnostic plots saved in 'model_diagnostics/'")
+print("Full diagnostic plots saved in 'arima_model/'")
