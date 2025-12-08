@@ -10,18 +10,15 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 import warnings
 warnings.filterwarnings("ignore")
 
-# --- Konfiguration ---
 csv_path = 'pv_production_june1.csv'
 target_col = 'pv_production'
 latitude, longitude = 48.6727, 12.6931
 period = 96
 
-# --- Data indlæsning ---
 df = pd.read_csv(csv_path, parse_dates=['timestamp'])
 df.set_index('timestamp', inplace=True)
 y = df[target_col].astype(float)
 
-# --- Hent vejrdata ---
 def fetch_open_meteo_data(url):
     r = requests.get(url)
     if r.status_code == 200:
@@ -33,21 +30,21 @@ end_date = pv_times[-1][:10]
 weather_url = (
     f"https://archive-api.open-meteo.com/v1/archive?"
     f"latitude={latitude}&longitude={longitude}&start_date={start_date}&end_date={end_date}"
-    f"&hourly=temperature_2m,cloud_cover,direct_radiation&timezone=Europe/Berlin"
+    f"&hourly=temperature_2m,cloudcover_mid,direct_radiation&timezone=Europe/Berlin"
 )
 weather_data = fetch_open_meteo_data(weather_url)
 
 if weather_data:
     hourly = weather_data.get('hourly', {})
     weather_times = hourly.get('time', [])
-    temp = hourly.get('temperature_2m', [np.nan]*len(weather_times))
-    cloud = hourly.get('cloud_cover', [np.nan]*len(weather_times))
+    #temp = hourly.get('temperature_2m', [np.nan]*len(weather_times))
+    cloud = hourly.get('cloudcover_mid', [np.nan]*len(weather_times))
     direct = hourly.get('direct_radiation', [np.nan]*len(weather_times))
 
     weather_df = pd.DataFrame({
         'time': pd.to_datetime(weather_times),
-        'temperature': temp,
-        'cloud_cover': cloud,
+        #'temperature': temp,
+        'cloudcover_mid': cloud,
         'direct_radiation': direct,
     }).set_index('time')
 
@@ -185,7 +182,7 @@ for h in range(24):
     plt.plot(res.resid)
     plt.title(f"Residuals Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"residual_plots/hour_{h}_residuals.png")
+    plt.savefig(f"residual_plots/hour_{h}_residuals.pdf")
     plt.close()
 
 print("Residual plots saved to folder 'residual_plots/'.")
@@ -201,12 +198,14 @@ for h in range(24):
         continue
 
     fig, axes = plt.subplots(1, 2, figsize=(10,3))
-    plot_acf(y_train_h, ax=axes[0])
+    plot_acf(y_train_h, ax=axes[0], alpha=None)
     axes[0].set_title(f"ACF Hour {h}")
-    plot_pacf(y_train_h, ax=axes[1], method='ywm')
+
+    plot_pacf(y_train_h, ax=axes[1], method='ywm', alpha=None)
     axes[1].set_title(f"PACF Hour {h}")
+
     plt.tight_layout()
-    plt.savefig(f"acf_pacf_plots/hour_{h}_acf_pacf.png")
+    plt.savefig(f"acf_pacf_plots/hour_{h}_acf_pacf.pdf")
     plt.close()
 
 print("ACF/PACF plots saved to folder 'acf_pacf_plots/'.")
@@ -223,7 +222,7 @@ for h in range(24):
     plt.plot(res.resid)
     plt.title(f"Residuals Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"residual_plots/hour_{h}_residuals.png")
+    plt.savefig(f"residual_plots/hour_{h}_residuals.pdf")
     plt.close()
 
 print("Residual plots saved to folder 'residual_plots/'.")
@@ -296,10 +295,31 @@ preds_15min_from_hour = preds_hour_series.reindex(y_val.index, method='ffill')
 preds_15min_lower = preds_hour_lower_series.reindex(y_val.index, method='ffill')
 preds_15min_upper = preds_hour_upper_series.reindex(y_val.index, method='ffill')
 
-rmse_hour_mapped = math.sqrt(mean_squared_error(y_val, preds_15min_from_hour))
-mae_hour_mapped = mean_absolute_error(y_val, preds_15min_from_hour)
-print(f"RMSE mapped 15-min: {rmse_hour_mapped:.3f}")
-print(f"MAE mapped 15-min: {mae_hour_mapped:.3f}")
+# --- Brug kun de sidste 24 punkter (24 × 15-min = 6 timer) ---
+last_n = 96
+
+y_val_last = y_val.tail(last_n)
+preds_last = preds_15min_from_hour.tail(last_n)
+
+rmse_hour_mapped = math.sqrt(mean_squared_error(y_val_last, preds_last))
+mae_hour_mapped = mean_absolute_error(y_val_last, preds_last)
+
+print(f"RMSE: {rmse_hour_mapped:.3f}")
+print(f"MAE: {mae_hour_mapped:.3f}")
+
+
+
+# ============================================================
+# MODEL DIAGNOSTICS PER HOUR
+# Residual time plot, QQ plot, histogram, and prediction-error plot
+# ============================================================
+
+os.makedirs('arimax_model', exist_ok=True)
+os.makedirs('arimax_model/residual_timeseries', exist_ok=True)
+os.makedirs('arimax_model/qq_plots', exist_ok=True)
+os.makedirs('arimax_model/histograms', exist_ok=True)
+os.makedirs('arimax_model/error_plots', exist_ok=True)
+
 
 # --- Plot ---
 # Vis kun sidste 24 timer (96 punkter) fra testsettet (testset er 36 timer i alt)
@@ -315,23 +335,10 @@ plt.plot(preds_plot.index, preds_plot, label='Prediction')
 plt.fill_between(preds_plot.index, preds_plot_lower, preds_plot_upper, alpha=0.2, label='95% CI')
 plt.legend()
 plt.tight_layout()
-plt.show()
+plt.savefig(f"arimax_model/plot.pdf")
+plt.close()
 
 
-
-
-
-
-# ============================================================
-# MODEL DIAGNOSTICS PER HOUR
-# Residual time plot, QQ plot, histogram, and prediction-error plot
-# ============================================================
-
-os.makedirs('model_diagnostics1', exist_ok=True)
-os.makedirs('model_diagnostics1/residual_timeseries', exist_ok=True)
-os.makedirs('model_diagnostics1/qq_plots', exist_ok=True)
-os.makedirs('model_diagnostics1/histograms', exist_ok=True)
-os.makedirs('model_diagnostics1/error_plots', exist_ok=True)
 
 from statsmodels.graphics.gofplots import qqplot
 
@@ -349,7 +356,7 @@ for h in range(24):
     plt.axhline(0, color='black', linewidth=0.8)
     plt.title(f"Residual Time Series - Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"model_diagnostics1/residual_timeseries/hour_{h}_residuals.png")
+    plt.savefig(f"arimax_model/residual_timeseries/hour_{h}_residuals.pdf")
     plt.close()
 
     # 2. QQ plot ----------------------------------------------
@@ -363,7 +370,7 @@ for h in range(24):
             line.set_markersize(3)
     plt.title(f"QQ Plot - Hour {h}")
     plt.tight_layout()
-    plt.savefig(f"model_diagnostics1/qq_plots/hour_{h}_qq.png")
+    plt.savefig(f"arimax_model/qq_plots/hour_{h}_qq.pdf")
     plt.close()
 
     # 3. Histogram of residuals --------------------------------
@@ -375,7 +382,7 @@ for h in range(24):
     plt.ylabel("Frequency")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f"model_diagnostics1/histograms/hour_{h}_hist.png")
+    plt.savefig(f"arimax_model/histograms/hour_{h}_hist.pdf")
     plt.close()
 
     # 4. Prediction-error plot: residuals vs. fitted values -----
@@ -394,7 +401,7 @@ for h in range(24):
     plt.xlabel("Fitted values (1-step ahead)")
     plt.ylabel("Residuals")
     plt.tight_layout()
-    plt.savefig(f"model_diagnostics1/error_plots/hour_{h}_errorplot.png")
+    plt.savefig(f"arimax_model/error_plots/hour_{h}_errorplot.pdf")
     plt.close()
 
-print("Full diagnostic plots saved in 'model_diagnostics1/'")
+print("Full diagnostic plots saved in 'arimax_model/'")
