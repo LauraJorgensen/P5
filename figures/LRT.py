@@ -12,7 +12,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # --- Konfiguration ---
-csv_path = 'pv_production_june1.csv'
+csv_path = 'data/pv_production_june_clean.csv'
 target_col = 'pv_production'
 latitude, longitude = 48.6727, 12.6931
 period = 96
@@ -122,7 +122,7 @@ sarima_orders_by_hour = {
     23: (0, 0, 0),
 }
 
-p, d, q = sarima_orders_by_hour[h]
+
 
 min_samples_per_hour = 14
 lrt_results_by_var = {var: {} for var in exog_variables_to_test}
@@ -134,7 +134,7 @@ for var in exog_variables_to_test:
     for h in range(24):
         idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
         y_train_h = y_train_hour.loc[idx_train_h].dropna()
-        
+        p, d, q = sarima_orders_by_hour[h]
         if len(y_train_h) < min_samples_per_hour:
             lrt_results_by_var[var][h] = None
             continue
@@ -256,4 +256,3 @@ plt.close()
 # plt.savefig('lrt_pvalue_heatmap.png', dpi=300, bbox_inches='tight')
 # print("\nHeatmap saved as 'lrt_pvalue_heatmap.png'")
 # plt.show()
-
