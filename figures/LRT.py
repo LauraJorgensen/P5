@@ -228,26 +228,3 @@ plt.close()
 # plt.show()
 
 
-# Create binary significance heatmap
-sig_matrix = (p_value_matrix < 0.05).astype(float)
-sig_matrix[np.isnan(p_value_matrix)] = np.nan
-sig_matrix_filtered = sig_matrix[:, hours_to_plot]
-
-plt.figure(figsize=(12, 6))
-sns.heatmap(sig_matrix_filtered, 
-            xticklabels=hours_to_plot, 
-            yticklabels=exog_variables_to_test,
-            cmap='RdBu',  # Red=not significant, Green=significant
-            vmin=0, vmax=1,
-            cbar_kws={'label': 'Significant (1=Yes, 0=No)', 'ticks': [0, 1]},
-            linewidths=0.5,
-            annot=True,
-            fmt='.2f')
-plt.title('Variable Significance by Hour (α=0.05)')
-plt.xlabel('Hour of Day')
-plt.ylabel('Exogenous Variable')
-plt.tight_layout()
-plt.savefig('lrt_significance_heatmap.png', dpi=300, bbox_inches='tight')
-print("Heatmap saved as 'lrt_significance_heatmap.png'")
-plt.show()
-
