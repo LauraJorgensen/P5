@@ -93,7 +93,37 @@ print("\n" + "="*60)
 print("LIKELIHOOD RATIO TEST FOR EXOGENOUS VARIABLES")
 print("="*60)
 
-p, d, q = 2, 1, 0
+
+# SARIMA-ordrer fra tabellen i figuren
+sarima_orders_by_hour = {
+    0: (0, 0, 0),
+    1: (0, 0, 0),
+    2: (0, 0, 0),
+    3: (1, 0, 3),
+    4: (1, 0, 2),
+    5: (0, 1, 1),
+    6: (0, 1, 1),
+    7: (2, 1, 0),
+    8: (0, 1, 1),
+    9: (0, 1, 1),
+    10: (0, 1, 1),
+    11: (0, 1, 2),
+    12: (2, 1, 1),
+    13: (2, 1, 0),
+    14: (2, 1, 0),
+    15: (2, 1, 0),
+    16: (0, 1, 1),
+    17: (3, 0, 0),
+    18: (1, 0, 2),
+    19: (2, 0, 0),
+    20: (0, 0, 0),
+    21: (0, 0, 0),
+    22: (0, 0, 0),
+    23: (0, 0, 0),
+}
+
+p, d, q = sarima_orders_by_hour[h]
+
 min_samples_per_hour = 14
 lrt_results_by_var = {var: {} for var in exog_variables_to_test}
 
@@ -226,5 +256,4 @@ plt.close()
 # plt.savefig('lrt_pvalue_heatmap.png', dpi=300, bbox_inches='tight')
 # print("\nHeatmap saved as 'lrt_pvalue_heatmap.png'")
 # plt.show()
-
 
