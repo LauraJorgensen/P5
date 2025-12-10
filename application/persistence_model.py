@@ -93,12 +93,18 @@ preds_15min = preds_hour_series.reindex(y_test.index, method='ffill')
 preds_15min_lower = preds_hour_lower_series.reindex(y_test.index, method='ffill')
 preds_15min_upper = preds_hour_upper_series.reindex(y_test.index, method='ffill')
 
-# --- Beregn fejl over HELE 1.5 dag test-set ---
-rmse = math.sqrt(mean_squared_error(y_test, preds_15min))
-mae = mean_absolute_error(y_test, preds_15min)
+# --- Beregn fejl KUN for de sidste 24 punkter (24 * 15min = 6 timer) ---
+last_n = 96
 
-print(f"\nRMSE 15-min test-set (1.5 dag): {rmse:.3f}")
-print(f"MAE 15-min test-set (1.5 dag): {mae:.3f}")
+y_test_last = y_test.tail(last_n)
+preds_last = preds_15min.tail(last_n)
+
+rmse = math.sqrt(mean_squared_error(y_test_last, preds_last))
+mae = mean_absolute_error(y_test_last, preds_last)
+
+print(f"\nRMSE: {rmse:.3f}")
+print(f"MAE: {mae:.3f}")
+
 
 # --- Plot KUN sidste dag ---
 plt.figure(figsize=(12, 5))
@@ -116,4 +122,5 @@ plt.fill_between(
 
 plt.legend()
 plt.tight_layout()
-plt.show()
+plt.savefig(f"Persistence_Model.pdf")
+plt.close()
