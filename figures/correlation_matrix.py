@@ -7,12 +7,16 @@ import matplotlib.pyplot as plt
 # ================================================
 # LOAD PV DATA
 # ================================================
+# --- Konfiguration samt data læsning---
+csv_path = 'data/pv_production_june_clean.csv'
+target_col = 'pv_production'
+latitude, longitude = 48.6727, 12.6931
+period = 96
 
 df = pd.read_csv(csv_path, parse_dates=['timestamp'])
 df.set_index('timestamp', inplace=True)
-
-# Convert target to float in case it's stored as string
 y = df[target_col].astype(float)
+
 
 # ================================================
 # FUNCTION TO FETCH WEATHER DATA
@@ -50,9 +54,7 @@ weather_url = (
 print("Fetching weather data from:")
 print(weather_url)
 
-# ================================================
-# FETCH WEATHER
-# ================================================
+# hent vejrdata
 
 weather_data = fetch_open_meteo_data(weather_url)
 
@@ -61,19 +63,16 @@ if weather_data:
     hourly = weather_data.get('hourly', {})
     weather_times = hourly.get('time', [])
 
-    # safe extraction with fallback
-    def safe(key):
-        return hourly.get(key, [np.nan] * len(weather_times))
 
     weather_df = pd.DataFrame({
         "time":              pd.to_datetime(weather_times),
-        "temperature_2m":    safe("temperature_2m"),
-        "cloud_cover":       safe("cloud_cover"),
-        "direct_radiation":  safe("direct_radiation"),
-        "diffuse_radiation": safe("diffuse_radiation"),
-        "cloudcover_low":    safe("cloudcover_low"),
-        "cloudcover_mid":    safe("cloudcover_mid"),
-        "cloudcover_high":   safe("cloudcover_high")
+        "temperature_2m":    hourly.get("temperature_2m"),
+        "cloud_cover":       hourly.get("cloud_cover"),
+        "direct_radiation":  hourly.get("direct_radiation"),
+        "diffuse_radiation": hourly.get("diffuse_radiation"),
+        "cloudcover_low":    hourly.get("cloudcover_low"),
+        "cloudcover_mid":    hourly.get("cloudcover_mid"),
+        "cloudcover_high":   hourly.get("cloudcover_high")
     }).set_index("time")
 
     # align timestamps

@@ -8,13 +8,11 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 warnings.filterwarnings("ignore")
 
-# =======================================================
-# 1. Generate ARMA(2,1) synthetic data
-# =======================================================
+# Generer syntetisk ARMA data og estimerer ARMA model på denne
 
 np.random.seed(43)
 
-# Sand proces: ARMA(1,1)
+# Test proces: ARMA(1,1)
 ar_true = np.array([1, -0.6])   # AR: 1 - 0.6 L
 ma_true = np.array([1, 0.5])    # MA: 1 + 0.5 L
 
@@ -23,9 +21,7 @@ y = pd.Series(arma.generate_sample(nsample=30, burnin=200))
 
 train = y
 
-# =======================================================
-# 2. Grid search for best ARMA(p,q)
-# =======================================================
+# find bedste ARMA(p,d,q) model via AIC
 
 best_aic = np.inf
 best_order = None
@@ -38,26 +34,22 @@ q_range = range(0, 4)
 for p in p_range:
     for d in d_range:
         for q in q_range:
-            try:
-                model = SARIMAX(train,
-                                order=(p, d, q),
-                                trend='n',
-                                enforce_stationarity=True,
-                                enforce_invertibility=True)
-                res_tmp = model.fit(disp=False)
-                if res_tmp.aic < best_aic:
-                    best_aic = res_tmp.aic
-                    best_order = (p, d, q)
-                    best_res = res_tmp
-            except:
-                continue
+
+            model = SARIMAX(train,
+                            order=(p, d, q),
+                            trend='n',
+                            enforce_stationarity=True,
+                            enforce_invertibility=True)
+            res_tmp = model.fit(disp=False)
+            if res_tmp.aic < best_aic:
+                best_aic = res_tmp.aic
+                best_order = (p, d, q)
+                best_res = res_tmp
 
 print("\nBest model:", best_order)
 p, d, q = best_order
 
-# =======================================================
-# 3. Extract estimated AR and MA coefficients
-# =======================================================
+# find estimerede AR og MA koefficienter
 
 phi = [best_res.params.get(f"ar.L{i}", 0) for i in range(1, p+1)]
 theta = [best_res.params.get(f"ma.L{i}", 0) for i in range(1, q+1)]
@@ -72,9 +64,7 @@ print("Estimated MA coefficients:", ma_est)
 sigma2_hat = best_res.params.get("sigma2", np.nan)
 print("\nEstimated sigma² (innovation variance):", sigma2_hat)
 
-# =======================================================
-# 4. Compute ACF & PACF for TRUE and ESTIMATED models
-# =======================================================
+# udregn teoretisk ACF og PACF for både true og estimeret ARMA
 
 lags = 30
 
@@ -89,28 +79,22 @@ x_acf_est   = np.arange(len(acf_est))
 x_pacf_true = np.arange(len(pacf_true))  # korrekt længde
 x_pacf_est  = np.arange(len(pacf_est))
 
-# =======================================================
-# 5. Plot ACF & PACF i subplots
-# =======================================================
+# Plot ACF og PACF: True vs Estimated
 
 fig, axes = plt.subplots(1, 2, figsize=(10, 3))
 
-# ---- ACF (venstre) ----
 axes[0].stem(x_acf_true, acf_true, linefmt='b-', markerfmt='bo', basefmt='k',
              label="True ARMA")
 axes[0].stem(x_acf_est, acf_est, linefmt='r-', markerfmt='ro', basefmt='k',
              label="Estimated ARMA")
-#axes[0].set_title("ACS#")
 axes[0].set_xlabel("Lag")
 axes[0].set_ylabel("ACS")
 axes[0].legend()
 
-# ---- PACF (højre) ----
 axes[1].stem(x_pacf_true, pacf_true, linefmt='b-', markerfmt='bo', basefmt='k',
              label="True ARMA")
 axes[1].stem(x_pacf_est, pacf_est, linefmt='r-', markerfmt='ro', basefmt='k',
              label="Estimated ARMA")
-#axes[1].set_title("Theoretical PACF: True vs Estimated")
 axes[1].set_xlabel("Lag")
 axes[1].set_ylabel("PACS")
 axes[1].legend()

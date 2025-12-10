@@ -62,13 +62,13 @@ else:
 
 X = weather_on_pv.copy()
 
-# --- Train/Validation split ---
-val_h = int(period * 1.5)  # 1.5 * period (96) = 144 => 36 timer (test set)
+# split i træning og validering
+val_h = int(period * 1.5)  # 1.5 * period (96) = 144 => 36 timer 
 
 X_train, X_val = X.iloc[:-val_h, :], X.iloc[-val_h:, :]
 y_train, y_val = y.iloc[:-val_h], y.iloc[-val_h:]
 
-# --- Resample til hourly ---
+#  resample til hourly data
 y_hour = y.resample('H').mean()
 X_hour = X.resample('H').mean()
 
@@ -77,9 +77,7 @@ y_train_hour, y_val_hour = y_hour.iloc[:-val_h_hours], y_hour.iloc[-val_h_hours:
 X_train_hour = X_hour.iloc[:-val_h_hours, :]
 X_val_hour = X_hour.iloc[-val_h_hours:, :]
 
-# =============================================================
-# LIKELIHOOD RATIO TEST (LRT) FOR EXOGENOUS VARIABLES
-# =============================================================
+# likelihood ratio test
 from scipy.stats import chi2
 
 exog_variables_to_test = ['cloud_cover', 'temperature', 'direct_radiation', 
@@ -141,40 +139,36 @@ for var in exog_variables_to_test:
         
         X_train_h_single = X_train_hour.loc[idx_train_h, [var]].reindex(y_train_h.index).ffill()
         
-        # Fit model WITHOUT exogenous variable (null model)
-        try:
-            model_null = SARIMAX(
-                endog=y_train_h,
-                order=(p, d, q),
-                enforce_stationarity=True,
-                enforce_invertibility=True,
-                trend='n'
-            )
-            res_null = model_null.fit(disp=False, maxiter=100)
-            ll_null = res_null.llf
-        except:
-            lrt_results_by_var[var][h] = None
-            continue
+        # Fit model uden exogenous variable
+
+        model_null = SARIMAX(
+            endog=y_train_h,
+            order=(p, d, q),
+            enforce_stationarity=True,
+            enforce_invertibility=True,
+            trend='n'
+        )
+        res_null = model_null.fit(disp=False, maxiter=100)
+        ll_null = res_null.llf
+    
         
-        # Fit model WITH exogenous variable (alternative model)
-        try:
-            model_alt = SARIMAX(
-                endog=y_train_h,
-                exog=X_train_h_single,
-                order=(p, d, q),
-                enforce_stationarity=True,
-                enforce_invertibility=True,
-                trend='n'
-            )
-            res_alt = model_alt.fit(disp=False, maxiter=100)
-            ll_alt = res_alt.llf
-        except:
-            lrt_results_by_var[var][h] = None
-            continue
+        # Fit model med exogenous variable 
+
+        model_alt = SARIMAX(
+            endog=y_train_h,
+            exog=X_train_h_single,
+            order=(p, d, q),
+            enforce_stationarity=True,
+            enforce_invertibility=True,
+            trend='n'
+        )
+        res_alt = model_alt.fit(disp=False, maxiter=100)
+        ll_alt = res_alt.llf
+
         
         # Likelihood ratio test statistic
         lr_stat = 2 * (ll_alt - ll_null)
-        df_diff = X_train_h_single.shape[1]  # number of additional parameters
+        df_diff = X_train_h_single.shape[1]  
         p_value = 1 - chi2.cdf(lr_stat, df_diff)
         
         lrt_results_by_var[var][h] = {
@@ -206,30 +200,23 @@ for var in exog_variables_to_test:
     print("-" * 40)
     for h in range(24):
         result = lrt_results_by_var[var].get(h)
-        if result is None:
-            print(f"{h:<6} {'N/A':<10} {'N/A':<10} {'N/A':<12}")
-        else:
-            sig_mark = "Yes" if result['significant'] else "No"
-            print(f"{h:<6} {result['lr_stat']:<10.3f} {result['p_value']:<10.4f} {sig_mark:<12}")
 
-# =============================================================
-# CREATE HEATMAP OF LRT RESULTS
-# =============================================================
+
+        sig_mark = "Yes" if result['significant'] else "No"
+        print(f"{h:<6} {result['lr_stat']:<10.3f} {result['p_value']:<10.4f} {sig_mark:<12}")
+
+# Heatmap Visualization
 import seaborn as sns
-
-# Create matrices for heatmap
 p_value_matrix = np.zeros((len(exog_variables_to_test), 24))
 lr_stat_matrix = np.zeros((len(exog_variables_to_test), 24))
 
 for i, var in enumerate(exog_variables_to_test):
     for h in range(24):
         result = lrt_results_by_var[var].get(h)
-        if result is not None:
-            p_value_matrix[i, h] = result['p_value']
-            lr_stat_matrix[i, h] = result['lr_stat']
-        else:
-            p_value_matrix[i, h] = np.nan
-            lr_stat_matrix[i, h] = np.nan
+
+        p_value_matrix[i, h] = result['p_value']
+        lr_stat_matrix[i, h] = result['lr_stat']
+    
 
 # Filter hours: remove 0,1,2,20,21,22,23 (keep hours 3-19)
 hours_to_plot = list(range(3, 20))
@@ -241,8 +228,8 @@ plt.figure(figsize=(12, 6))
 sns.heatmap(p_value_matrix_filtered, 
             xticklabels=hours_to_plot, 
             yticklabels=exog_variables_to_test,
-            cmap='RdBu_r',  # Red=high p-value (not sig), Green=low p-value (sig)
-            vmin=0, vmax=0.1,  # Focus on significance range
+            cmap='RdBu_r',  
+            vmin=0, vmax=0.1,  
             annot=True, 
             fmt='.2f',
             cbar_kws={'label': 'p-value'},
@@ -253,6 +240,3 @@ plt.ylabel('Exogenous Variable')
 plt.tight_layout()
 plt.savefig(f"lrt_pvalue_heatmap.pdf")
 plt.close()
-# plt.savefig('lrt_pvalue_heatmap.png', dpi=300, bbox_inches='tight')
-# print("\nHeatmap saved as 'lrt_pvalue_heatmap.png'")
-# plt.show()

@@ -10,7 +10,8 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 import warnings
 warnings.filterwarnings("ignore")
 
-csv_path = 'pv_production_june1.csv'
+# --- Konfiguration samt data læsning---
+csv_path = 'data/pv_production_june_clean.csv'
 target_col = 'pv_production'
 latitude, longitude = 48.6727, 12.6931
 period = 96
@@ -37,7 +38,6 @@ weather_data = fetch_open_meteo_data(weather_url)
 if weather_data:
     hourly = weather_data.get('hourly', {})
     weather_times = hourly.get('time', [])
-    #temp = hourly.get('temperature_2m', [np.nan]*len(weather_times))
     cloud = hourly.get('cloudcover_mid', [np.nan]*len(weather_times))
     direct = hourly.get('direct_radiation', [np.nan]*len(weather_times))
 
@@ -54,8 +54,8 @@ else:
 
 X = weather_on_pv.copy()
 
-# --- Train/Validation split ---
-val_h = int(period * 1.5)  # 1.5 * period (96) = 144 => 36 timer (test set)
+# --- Split til Train og Validation ---
+val_h = int(period * 1.5)  # 36 timer
 
 X_train, X_val = X.iloc[:-val_h, :], X.iloc[-val_h:, :]
 y_train, y_val = y.iloc[:-val_h], y.iloc[-val_h:]
@@ -69,10 +69,9 @@ y_train_hour, y_val_hour = y_hour.iloc[:-val_h_hours], y_hour.iloc[-val_h_hours:
 X_train_hour = X_hour.iloc[:-val_h_hours, :]
 X_val_hour = X_hour.iloc[-val_h_hours:, :]
 
-# --- Kun timemodeller (ingen global fallback) ---
+# --- Kun timemodeller  ---
 hour_models = {}
 hour_results = {}
-min_samples_per_hour = 14
 p, d, q = 2, 1, 0
 
 for h in range(24):
@@ -80,26 +79,17 @@ for h in range(24):
     y_train_h = y_train_hour.loc[idx_train_h].dropna()
     X_train_h = X_train_hour.loc[idx_train_h].reindex(y_train_h.index).fillna(method='ffill')
 
-    if len(y_train_h) < min_samples_per_hour:
-        hour_models[h] = None
-        hour_results[h] = None
-        continue
+    model_h = SARIMAX(
+        endog=y_train_h,
+        exog=X_train_h,
+        order=(p, d, q),
+        enforce_stationarity=True,
+        enforce_invertibility=True,
+        trend='n'
+    )
+    res_h = model_h.fit(disp=False, maxiter=100)
+    hour_models[h] = model_h
 
-    try:
-        model_h = SARIMAX(
-            endog=y_train_h,
-            exog=X_train_h,
-            order=(p, d, q),
-            enforce_stationarity=True,
-            enforce_invertibility=True,
-            trend='n'
-        )
-        res_h = model_h.fit(disp=False, maxiter=100)
-        hour_models[h] = model_h
-        hour_results[h] = res_h
-    except:
-        hour_models[h] = None
-        hour_results[h] = None
 
 # --- Automatic model selection per hour (try multiple (p,d,q) orders)
 best_orders = {}
@@ -113,10 +103,6 @@ candidate_orders = [(p, d, q)
 for h in range(24):
     idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
     y_train_h = y_train_hour.loc[idx_train_h].dropna()
-    if len(y_train_h) < min_samples_per_hour:
-        best_orders[h] = None
-        best_results[h] = None
-        continue
 
     X_train_h = X_train_hour.loc[idx_train_h].reindex(y_train_h.index).ffill()
 
@@ -126,16 +112,15 @@ for h in range(24):
     best_order = None
 
     for order in candidate_orders:
-        try:
-            model = SARIMAX(endog=y_train_h, exog=X_train_h, order=order, trend='n', enforce_stationarity=True, enforce_invertibility=True)
-            res = model.fit(disp=False)
-            if res.aic < best_aic:
-                best_aic = res.aic
-                best_model = model
-                best_res = res
-                best_order = order
-        except:
-            continue
+
+        model = SARIMAX(endog=y_train_h, exog=X_train_h, order=order, trend='n', enforce_stationarity=True, enforce_invertibility=True)
+        res = model.fit(disp=False)
+        if res.aic < best_aic:
+            best_aic = res.aic
+            best_model = model
+            best_res = res
+            best_order = order
+
 
     best_orders[h] = best_order
     best_results[h] = best_res
@@ -148,10 +133,6 @@ from statsmodels.stats.diagnostic import acorr_ljungbox
 
 for h in range(24):
     res = hour_results.get(h)
-    if res is None:
-        model_diagnostics[h] = None
-        continue
-
     aic = res.aic
     bic = res.bic
     ljung = acorr_ljungbox(res.resid, lags=[10], return_df=True)
@@ -166,10 +147,8 @@ for h in range(24):
 print("--- Selected Hourly Models ---")
 for h in range(24):
     diag = model_diagnostics[h]
-    if diag is None:
-        print(f"Hour {h}: no model (insufficient data)")
-    else:
-        print(f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
+
+    print(f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
 
 # --- Generate residual plots per hour
 import matplotlib.pyplot as plt
@@ -186,13 +165,6 @@ for t_idx in y_val_hour.index:
     h = t_idx.hour
     res_h = hour_results.get(h)
 
-    if res_h is None:
-        preds_hour.append(np.nan)
-        preds_hour_lower.append(np.nan)
-        preds_hour_upper.append(np.nan)
-        idxs.append(t_idx)
-        continue
-
     exog_row = X_val_hour.loc[[t_idx]].reindex([t_idx]).fillna(method='ffill')
 
     pred_res = res_h.get_forecast(steps=1, exog=exog_row)
@@ -208,12 +180,12 @@ preds_hour_series = pd.Series(preds_hour, index=idxs)
 preds_hour_lower_series = pd.Series(preds_hour_lower, index=idxs)
 preds_hour_upper_series = pd.Series(preds_hour_upper, index=idxs)
 
-# --- Map til 15-min ---
+# --- Map til 15-min ved at forward fill ---
 preds_15min_from_hour = preds_hour_series.reindex(y_val.index, method='ffill')
 preds_15min_lower = preds_hour_lower_series.reindex(y_val.index, method='ffill')
 preds_15min_upper = preds_hour_upper_series.reindex(y_val.index, method='ffill')
 
-# --- Brug kun de sidste 24 punkter (24 × 15-min = 6 timer) ---
+# --- Brug kun de sidste 24 timer til at plotte ---
 last_n = 96
 
 y_val_last = y_val.tail(last_n)
@@ -229,18 +201,14 @@ print(f"MAE: {mae_hour_mapped:.3f}")
 
 # ============================================================
 # MODEL DIAGNOSTICS PER HOUR
-# Residual time plot, QQ plot, histogram, and prediction-error plot
 # ============================================================
 
 os.makedirs('arimax_model', exist_ok=True)
 os.makedirs('arimax_model/residual_timeseries', exist_ok=True)
 os.makedirs('arimax_model/qq_plots', exist_ok=True)
-os.makedirs('arimax_model/histograms', exist_ok=True)
-os.makedirs('arimax_model/error_plots', exist_ok=True)
 
 
 # --- Plot ---
-# Vis kun sidste 24 timer (96 punkter) fra testsettet (testset er 36 timer i alt)
 plot_n = 24 * 4# 24 timer * 4 (15-min) = 96 punkter
 y_plot = y_val.tail(plot_n)
 preds_plot = preds_15min_from_hour.tail(plot_n)
@@ -267,11 +235,9 @@ for h in range(24):
 
     resid = res.resid.dropna()
 
-  # 1. Residual time series ---------------------------------
+  # 1. Residual time series ---
     plt.figure(figsize=(8, 3))
-
-    # scatter i stedet for line-plot
-    plt.scatter(resid.index, resid.values, s=10)  # s = punktstørrelse
+    plt.scatter(resid.index, resid.values, s=10) 
     plt.axhline(0, color='black', linewidth=0.8)
 
     plt.title(f"Residual Time Plot - Hour {h}")
@@ -280,11 +246,10 @@ for h in range(24):
     plt.savefig(f"arimax_model/residual_timeseries/hour_{h}_residuals.pdf")
     plt.close()
 
-    # 2. QQ plot ----------------------------------------------
+    # 2. QQ plot ---
     plt.figure(figsize=(4, 4))
     ax = plt.gca()
     qqplot(resid, line='s', ax=ax)
-    # sæt små prikker for de punkter der er markeret i qqplot
     for line in ax.get_lines():
         mk = line.get_marker()
         if mk not in (None, 'None', ''):
