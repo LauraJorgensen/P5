@@ -122,6 +122,8 @@ ax = sns.heatmap(
 plt.xticks(rotation=50, ha='right', fontsize=12)
 plt.yticks(rotation=0, fontsize=12)
 
-plt.title("Correlation Matrix of Exogenous Weather Variables", fontsize=16, pad=20)
+#plt.title("Correlation Matrix of Exogenous Weather Variables", fontsize=16, pad=20)
 plt.tight_layout()
-plt.show()
+plt.savefig(f"corr_matrix.pdf")
+plt.close()
+
