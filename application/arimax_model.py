@@ -30,7 +30,7 @@ end_date = pv_times[-1][:10]
 weather_url = (
     f"https://archive-api.open-meteo.com/v1/archive?"
     f"latitude={latitude}&longitude={longitude}&start_date={start_date}&end_date={end_date}"
-    f"&hourly=temperature_2m,cloudcover_mid,direct_radiation&timezone=Europe/Berlin"
+    f"&hourly=temperature_2m,cloudcover_mid,direct_radiation&timezone=UTC"
 )
 weather_data = fetch_open_meteo_data(weather_url)
 
@@ -105,7 +105,10 @@ for h in range(24):
 best_orders = {}
 best_results = {}
 
-candidate_orders = [(1,1,0), (2,1,0), (3,1,0), (1,1,1), (2,1,1), (1,0,0), (0,0,0), (0,0,3), (2,0,0), (2,0,1)]
+candidate_orders = [(p, d, q)
+    for p in range(0, 4)
+    for d in range(0, 2)
+    for q in range(0, 4)]
 
 for h in range(24):
     idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
@@ -160,103 +163,18 @@ for h in range(24):
         'LjungBox_p': ljung['lb_pvalue'].iloc[0]
     }
 
-print("--- Model Diagnostics per hour (auto-selected) ---")
+print("--- Selected Hourly Models ---")
 for h in range(24):
     diag = model_diagnostics[h]
     if diag is None:
         print(f"Hour {h}: no model (insufficient data)")
     else:
-        print(f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, BIC={diag['BIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
+        print(f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
 
 # --- Generate residual plots per hour
 import matplotlib.pyplot as plt
 import os
 os.makedirs('residual_plots', exist_ok=True)
-
-for h in range(24):
-    res = hour_results.get(h)
-    if res is None:
-        continue
-
-    plt.figure(figsize=(8,3))
-    plt.plot(res.resid)
-    plt.title(f"Residuals Hour {h}")
-    plt.tight_layout()
-    plt.savefig(f"residual_plots/hour_{h}_residuals.pdf")
-    plt.close()
-
-print("Residual plots saved to folder 'residual_plots/'.")
-
-# --- Plot ACF & PACF per hour
-os.makedirs('acf_pacf_plots', exist_ok=True)
-from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-
-for h in range(24):
-    idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
-    y_train_h = y_train_hour.loc[idx_train_h].dropna()
-    if len(y_train_h) < min_samples_per_hour:
-        continue
-
-    fig, axes = plt.subplots(1, 2, figsize=(10,3))
-    plot_acf(y_train_h, ax=axes[0], alpha=None)
-    axes[0].set_title(f"ACF Hour {h}")
-
-    plot_pacf(y_train_h, ax=axes[1], method='ywm', alpha=None)
-    axes[1].set_title(f"PACF Hour {h}")
-
-    plt.tight_layout()
-    plt.savefig(f"acf_pacf_plots/hour_{h}_acf_pacf.pdf")
-    plt.close()
-
-print("ACF/PACF plots saved to folder 'acf_pacf_plots/'.")
-import matplotlib.pyplot as plt
-import os
-os.makedirs('residual_plots', exist_ok=True)
-
-for h in range(24):
-    res = hour_results.get(h)
-    if res is None:
-        continue
-
-    plt.figure(figsize=(8,3))
-    plt.plot(res.resid)
-    plt.title(f"Residuals Hour {h}")
-    plt.tight_layout()
-    plt.savefig(f"residual_plots/hour_{h}_residuals.pdf")
-    plt.close()
-
-print("Residual plots saved to folder 'residual_plots/'.")
-
-# --- Forecast hourly (AIC, BIC, Ljung-Box) per hour
-model_diagnostics = {}
-from statsmodels.stats.diagnostic import acorr_ljungbox
-
-for h in range(24):
-    res = hour_results.get(h)
-    if res is None:
-        model_diagnostics[h] = None
-        continue
-
-    # AIC / BIC
-    aic = res.aic
-    bic = res.bic
-
-    # Ljung-Box test on residuals
-    ljung = acorr_ljungbox(res.resid, lags=[10], return_df=True)
-
-    model_diagnostics[h] = {
-        'AIC': aic,
-        'BIC': bic,
-        'LjungBox_p': ljung['lb_pvalue'].iloc[0]
-    }
-
-print("--- Model Diagnostics per hour ---")
-for h in range(24):
-    diag = model_diagnostics[h]
-    if diag is None:
-        print(f"Hour {h}: no model (insufficient data)")
-    else:
-        print(f"Hour {h}: AIC={diag['AIC']:.2f}, BIC={diag['BIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
 
 # --- Forecast hourly ---
 preds_hour = []
@@ -349,12 +267,15 @@ for h in range(24):
 
     resid = res.resid.dropna()
 
-    # 1. Residual time series ---------------------------------
+  # 1. Residual time series ---------------------------------
     plt.figure(figsize=(8, 3))
-    # små prikker for hvert punkt + linje
-    plt.plot(resid.index, resid.values, marker='o', linestyle='-', linewidth=1)
+
+    # scatter i stedet for line-plot
+    plt.scatter(resid.index, resid.values, s=10)  # s = punktstørrelse
     plt.axhline(0, color='black', linewidth=0.8)
-    plt.title(f"Residual Time Series - Hour {h}")
+
+    plt.title(f"Residual Time Plot - Hour {h}")
+    plt.ylabel("Residuals")
     plt.tight_layout()
     plt.savefig(f"arimax_model/residual_timeseries/hour_{h}_residuals.pdf")
     plt.close()
@@ -368,40 +289,9 @@ for h in range(24):
         mk = line.get_marker()
         if mk not in (None, 'None', ''):
             line.set_markersize(3)
-    plt.title(f"QQ Plot - Hour {h}")
+    plt.title(f"Q-Q Plot - Hour {h}")
     plt.tight_layout()
     plt.savefig(f"arimax_model/qq_plots/hour_{h}_qq.pdf")
-    plt.close()
-
-    # 3. Histogram of residuals --------------------------------
-    plt.figure(figsize=(6, 4))
-    plt.hist(resid, bins=20, alpha=0.7)
-    plt.axvline(np.mean(resid), color='red', linestyle='--', label='Mean')
-    plt.title(f"Residual Histogram - Hour {h}")
-    plt.xlabel("Residual")
-    plt.ylabel("Frequency")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f"arimax_model/histograms/hour_{h}_hist.pdf")
-    plt.close()
-
-    # 4. Prediction-error plot: residuals vs. fitted values -----
-    fitted_vals = res.fittedvalues.dropna()
-
-    # align index with residuals
-    common_idx = resid.index.intersection(fitted_vals.index)
-    resid_aligned = resid.loc[common_idx]
-    fitted_aligned = fitted_vals.loc[common_idx]
-
-    plt.figure(figsize=(6, 4))
-    # allerede scatter — sørg for små prikker (s angiver punktstørrelse)
-    plt.scatter(fitted_aligned, resid_aligned, s=10, alpha=0.7)
-    plt.axhline(0, color='black', linewidth=1)
-    plt.title(f"Prediction Error Plot - Hour {h}")
-    plt.xlabel("Fitted values (1-step ahead)")
-    plt.ylabel("Residuals")
-    plt.tight_layout()
-    plt.savefig(f"arimax_model/error_plots/hour_{h}_errorplot.pdf")
     plt.close()
 
 print("Full diagnostic plots saved in 'arimax_model/'")
