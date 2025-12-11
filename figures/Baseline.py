@@ -8,14 +8,13 @@ data = pd.read_csv('data/pv_production_june_clean.csv', parse_dates=['timestamp'
 P_full = data['pv_production'].values
 times = pd.DatetimeIndex(data['timestamp'])
 
-# --- Calculate poa_baseline (b_t) ---
+# --- Calculate baseline ---
 latitude = 48.669
 longitude = 12.692
 tz = 'Europe/Berlin'
 site = pvlib.location.Location(latitude, longitude, tz=tz)
 tilt = latitude
 azimuth = 180
-albedo = 0.2
 clearsky = site.get_clearsky(times)
 solpos = site.get_solarposition(times)
 poa = pvlib.irradiance.get_total_irradiance(
@@ -26,7 +25,6 @@ poa = pvlib.irradiance.get_total_irradiance(
     dni=clearsky['dni'],
     ghi=clearsky['ghi'],
     dhi=clearsky['dhi'],
-    albedo=albedo
 )
 b_full = poa['poa_global'].values
 b_full = b_full / np.max(b_full)  # Normalize
@@ -37,19 +35,18 @@ P = P_full[mask]
 b = b_full[mask]
 
 # --- Divide data by normalized baseline ---
-# Handle division by zero or invalid values
 normalized_ratio = np.where(b_full > 0, P_full / b_full, np.nan)
 
 # --- Create plot ---
 import matplotlib.pyplot as plt
 
-plt.figure(figsize=(14, 6))
-plt.plot(times, normalized_ratio, color='green', alpha=0.7)
-plt.xlabel('Time', fontsize=11)
-plt.ylabel('Normalized Ratio', fontsize=11)
-plt.title('PV Production Divided by Normalized Baseline', fontsize=12, fontweight='bold')
-plt.grid(True, alpha=0.3)
+plt.figure(figsize=(10, 4))
+plt.plot(times, normalized_ratio)
+plt.xlabel('Time')
+plt.ylabel('PV Production / $B_t$')
+plt.grid(True)
+plt.xlim([times.min(), times.max()])
+plt.ylim([0, 30])
 plt.tight_layout()
-plt.savefig('normalized_ratio.png', dpi=300, bbox_inches='tight')
-print("Plot saved as 'normalized_ratio.png'")
-plt.show()
+plt.savefig(f"normalized_ratio.pdf")
+plt.close()
