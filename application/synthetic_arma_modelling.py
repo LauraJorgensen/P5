@@ -1,11 +1,13 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from statsmodels.tsa.arima_process import arma_acf, arma_pacf
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
-
 from statsmodels.tsa.arima_process import ArmaProcess, arma_acf, arma_pacf
 from statsmodels.tsa.statespace.sarimax import SARIMAX
-
 warnings.filterwarnings("ignore")
 
 # Generer syntetisk ARMA data og estimerer ARMA model på denne
@@ -17,12 +19,11 @@ ar_true = np.array([1, -0.6])   # AR: 1 - 0.6 L
 ma_true = np.array([1, 0.5])    # MA: 1 + 0.5 L
 
 arma = ArmaProcess(ar_true, ma_true)
-y = pd.Series(arma.generate_sample(nsample=30, burnin=200))
+y = pd.Series(arma.generate_sample(nsample=365, burnin=200))
 
 train = y
 
 # find bedste ARMA(p,d,q) model via AIC
-
 best_aic = np.inf
 best_order = None
 best_res = None
@@ -64,7 +65,8 @@ print("Estimated MA coefficients:", ma_est)
 sigma2_hat = best_res.params.get("sigma2", np.nan)
 print("\nEstimated sigma² (innovation variance):", sigma2_hat)
 
-# udregn teoretisk ACF og PACF for både true og estimeret ARMA
+
+# ACF og PACF 
 
 lags = 30
 
@@ -74,32 +76,52 @@ acf_est   = arma_acf(ar_est,  ma_est,  lags=lags)
 pacf_true = arma_pacf(ar_true, ma_true, lags=lags)
 pacf_est  = arma_pacf(ar_est,  ma_est,  lags=lags)
 
-x_acf_true  = np.arange(len(acf_true))   # korrekt længde
-x_acf_est   = np.arange(len(acf_est))
-x_pacf_true = np.arange(len(pacf_true))  # korrekt længde
-x_pacf_est  = np.arange(len(pacf_est))
+x_acf  = np.arange(len(acf_true))
+x_pacf = np.arange(len(pacf_true))
 
-# Plot ACF og PACF: True vs Estimated
+# plot
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
-fig, axes = plt.subplots(1, 2, figsize=(10, 3))
+# acf
+ax = axes[0]
 
-axes[0].stem(x_acf_true, acf_true, linefmt='b-', markerfmt='bo', basefmt='k',
-             label="True ARMA")
-axes[0].stem(x_acf_est, acf_est, linefmt='r-', markerfmt='ro', basefmt='k',
-             label="Estimated ARMA")
-axes[0].set_xlabel("Lag")
-axes[0].set_ylabel("ACS")
-axes[0].legend()
+# TRUE
+ax.stem(x_acf, acf_true, linefmt='C0-', markerfmt='C0o', basefmt='k-')
 
-axes[1].stem(x_pacf_true, pacf_true, linefmt='b-', markerfmt='bo', basefmt='k',
-             label="True ARMA")
-axes[1].stem(x_pacf_est, pacf_est, linefmt='r-', markerfmt='ro', basefmt='k',
-             label="Estimated ARMA")
-axes[1].set_xlabel("Lag")
-axes[1].set_ylabel("PACS")
-axes[1].legend()
+# ESTIMATED
+ax.stem(x_acf, acf_est,  linefmt='C1-', markerfmt='C1o', basefmt='k-')
+
+ax.set_xlim(-0.15, 30)
+ax.set_ylim(-1, 1)
+ax.set_xlabel("Lag")
+ax.set_ylabel("ACS")
+ax.grid(True)
+ax.set_title("")
+
+# pacf
+ax = axes[1]
+
+# TRUE
+ax.stem(x_pacf, pacf_true, linefmt='C0-', markerfmt='C0o', basefmt='k-')
+
+# ESTIMATED
+ax.stem(x_pacf, pacf_est,  linefmt='C1-', markerfmt='C1o', basefmt='k-')
+
+ax.set_xlim(-0.15, 30)
+ax.set_ylim(-1, 1)
+ax.set_xlabel("Lag")
+ax.set_ylabel("PACS")
+ax.grid(True)
+ax.set_title("")
+
+
+legend_elements = [
+    Line2D([0], [0], marker='o', color='C0', label='True ARIMA', markersize=6),
+    Line2D([0], [0], marker='o', color='C1', label='Estimated ARIMA', markersize=6),]
+
+axes[0].legend(handles=legend_elements, frameon=False)
+axes[1].legend(handles=legend_elements, frameon=False)
 
 plt.tight_layout()
-plt.savefig(f"synthetic_arma_acf_pacf.pdf")
+plt.savefig("acf_pacf_true_vs_estimated.pdf")
 plt.close()
-
