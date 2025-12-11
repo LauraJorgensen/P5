@@ -9,7 +9,7 @@ np.random.seed(42)
 
 # --- Konfiguration ---
 latitude, longitude = 48.6727, 12.6931  # Landau a. d. Isar
-year = 2022
+year = 2025
 times = pd.date_range(start=f'{year}-01-01', end=f'{year}-12-31 23:45', freq='15min', tz='Europe/Berlin')
 
 # hent clearsky data
@@ -22,26 +22,24 @@ noise = np.random.normal(-200, 0.10 * np.max(Bt), size=Bt.shape)
 Bt_noisy = np.where(Bt >= 0.1, Bt + noise, Bt)
 Bt_noisy = np.maximum(Bt_noisy, 0)
 
-# normaliser ---
-Bt_noisy_norm = Bt_noisy / np.max(Bt_noisy+250)
+# normaliser
+Bt_noisy_norm = Bt_noisy / np.max(Bt_noisy + 225)
 
 # --- Udglat med dagligt gennemsnit ---
 df_plot = pd.DataFrame({'norm_prod': Bt_noisy_norm}, index=times)
 df_daily = df_plot.resample('D').mean()
 
-# --- Plot med høj kvalitet ---
-plt.figure(figsize=(15, 5), dpi=300)
-plt.plot(times, Bt_noisy_norm, color='tab:blue', linewidth=0.7, label='Normalized Power Production')
-plt.ylim(0, 1.05)
-plt.xlabel('Date', fontsize=14)
-plt.ylabel('Normalized Production', fontsize=14)
-plt.xticks(fontsize=12)
-plt.yticks(fontsize=12)
+# --- Plot normeret clearsky + noise ---
+plt.figure(figsize=(10, 4))
+plt.plot(times, Bt_noisy_norm, linewidth=1)
+plt.ylim(0, 1)
+plt.xlim(times[0], times[-1])
+plt.grid(True)
+plt.xlabel('Time')
+plt.ylabel('Normalized PV Production')
 plt.tight_layout()
-plt.legend(fontsize=14)
-plt.savefig('clearsky_noise_highres_norm.pdf', format='pdf', dpi=300)
-plt.savefig('clearsky_noise_highres_norm.png', format='png', dpi=300)
-plt.show()
+plt.savefig('clearsky_noise_highres_norm.pdf')
+plt.close()
 
 # --- Indlæs data ---
 df = pd.read_csv('data\pv_production_june.csv', parse_dates=['timestamp'])
@@ -51,58 +49,56 @@ df.set_index('timestamp', inplace=True)
 last_week_start = df.index[-1] - pd.Timedelta(days=7)
 df_last_week = df[df.index >= last_week_start]
 
+# --- Plot sidste uge ---
+plt.figure(figsize=(10, 4))
+plt.plot(df_last_week.index, df_last_week['pv_production'], linewidth=1.2, label='PV Production')
+plt.ylim(0, 1)
+plt.grid(True)
+plt.xlabel('Time')
+plt.ylabel('Normalized PV Production')
 
-# --- Plot ---
-plt.figure(figsize=(12, 4), dpi=300)
-plt.plot(df_last_week.index, df_last_week['pv_production'], color='tab:orange', linewidth=1.2, label='Normalized PV Production')
-plt.ylim(0, 1.05)
-plt.xlabel('Time', fontsize=14)
-plt.ylabel('Normalized Production', fontsize=14)
-plt.xticks(fontsize=12)
-plt.yticks(fontsize=12)
 plt.tight_layout()
-plt.legend(fontsize=14)
-plt.savefig('pv_last_week_highres.pdf', format='pdf', dpi=300)
-plt.savefig('pv_last_week_highres.png', format='png', dpi=300)
-plt.show()
-df = pd.read_csv('data/pv_production_june_clean.csv', parse_dates=['timestamp'])
-df.set_index('timestamp', inplace=True)
-# --- Plot ACF for all data ---
-plt.figure(figsize=(8, 4), dpi=300)
-plot_acf(df['pv_production'], lags=200, ax=plt.gca(),alpha=None)
-plt.title('Autocorrelation (ACF) of PV Production', fontsize=14)
-plt.xlabel('Lag', fontsize=12)
-plt.ylabel('Autocorrelation', fontsize=12)
-plt.grid()
+plt.savefig('pv_last_week_highres.pdf')
+plt.close()
+
+# --- Plot ACF ---
+plt.figure(figsize=(6, 4))
+ax = plt.gca()
+plot_acf(df['pv_production'], lags=200, ax=ax, alpha=None)
+ax.set_title("")  
+plt.xlabel('Lag')
+plt.xlim(0, 200)
+plt.ylabel('ACS')
+plt.grid(True)
 plt.tight_layout()
-plt.savefig('pv_acf_highres.pdf', format='pdf', dpi=300)
-plt.savefig('pv_acf_highres.png', format='png', dpi=300)
-plt.show()
+plt.savefig('pv_acf_highres.pdf')
+plt.close()
 
 # --- Plot PSD for all data ---
-fs = 4  # 15-min data = 4 samples per hour
+fs = 4  # 4 samples per hour (15-min data)
 f, Pxx = welch(df['pv_production'].values, fs=fs, nperseg=1024)
-plt.figure(figsize=(8, 4), dpi=300)
-plt.semilogy(f, Pxx, color='tab:green')
-plt.title('Power Spectral Density (PSD) of PV Production', fontsize=14)
-plt.xlabel('Frequency [1/hour]', fontsize=12)
-plt.ylabel('PSD', fontsize=12)
-plt.grid()
-plt.tight_layout()
-plt.savefig('pv_psd_highres.pdf', format='pdf', dpi=300)
-plt.savefig('pv_psd_highres.png', format='png', dpi=300)
-plt.show()
 
-# --- Plot PSD for hour 9 only ---
-df_hour9 = df[df.index.hour == 9]
-f_h9, Pxx_h9 = welch(df_hour9['pv_production'].values, fs=fs, nperseg=min(256, len(df_hour9)))
-plt.figure(figsize=(8, 4), dpi=300)
-plt.semilogy(f_h9, Pxx_h9, color='tab:purple')
-plt.title('Power Spectral Density (PSD) of PV Production - Hour 9', fontsize=14)
-plt.xlabel('Frequency [1/hour]', fontsize=12)
-plt.ylabel('PSD', fontsize=12)
-plt.grid()
+plt.figure(figsize=(6, 4))
+plt.semilogy(f, Pxx)
+plt.xlabel('Frequency [1/hour]')
+plt.ylabel('Periodgram')
+plt.xlim(0, 2)
+plt.grid(True)
 plt.tight_layout()
-plt.savefig('pv_psd_hour9_highres.pdf', format='pdf', dpi=300)
-plt.savefig('pv_psd_hour9_highres.png', format='png', dpi=300)
-plt.show()
+plt.savefig('pv_psd_highres.pdf')
+plt.close()
+
+# --- Plot PSD kun for time 12 ---
+df_hour12 = df[df.index.hour == 12]
+f_h12, Pxx_h12 = welch(df_hour12['pv_production'].values, fs=fs,
+                    nperseg=min(256, len(df_hour12)))
+
+plt.figure(figsize=(6, 4))
+plt.semilogy(f_h12, Pxx_h12)
+plt.xlabel('Frequency [1/hour]')
+plt.ylabel('PSD')
+plt.xlim(0, 2)
+plt.grid(True)
+plt.tight_layout()
+plt.savefig('pv_psd_hour12_highres.pdf')
+plt.close()
