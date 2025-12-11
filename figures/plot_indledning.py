@@ -23,7 +23,7 @@ Bt_noisy = np.where(Bt >= 0.1, Bt + noise, Bt)
 Bt_noisy = np.maximum(Bt_noisy, 0)
 
 # normaliser ---
-Bt_noisy_norm = Bt_noisy / np.max(Bt_noisy)
+Bt_noisy_norm = Bt_noisy / np.max(Bt_noisy+250)
 
 # --- Udglat med dagligt gennemsnit ---
 df_plot = pd.DataFrame({'norm_prod': Bt_noisy_norm}, index=times)
@@ -51,13 +51,10 @@ df.set_index('timestamp', inplace=True)
 last_week_start = df.index[-1] - pd.Timedelta(days=7)
 df_last_week = df[df.index >= last_week_start]
 
-# --- Normaliser produktion ---
-pv_max = df['pv_production'].max()
-df_last_week['pv_production_norm'] = df_last_week['pv_production'] / pv_max
 
 # --- Plot ---
 plt.figure(figsize=(12, 4), dpi=300)
-plt.plot(df_last_week.index, df_last_week['pv_production_norm'], color='tab:orange', linewidth=1.2, label='Normalized PV Production')
+plt.plot(df_last_week.index, df_last_week['pv_production'], color='tab:orange', linewidth=1.2, label='Normalized PV Production')
 plt.ylim(0, 1.05)
 plt.xlabel('Time', fontsize=14)
 plt.ylabel('Normalized Production', fontsize=14)
@@ -68,7 +65,8 @@ plt.legend(fontsize=14)
 plt.savefig('pv_last_week_highres.pdf', format='pdf', dpi=300)
 plt.savefig('pv_last_week_highres.png', format='png', dpi=300)
 plt.show()
-
+df = pd.read_csv('data/pv_production_june_clean.csv', parse_dates=['timestamp'])
+df.set_index('timestamp', inplace=True)
 # --- Plot ACF for all data ---
 plt.figure(figsize=(8, 4), dpi=300)
 plot_acf(df['pv_production'], lags=200, ax=plt.gca(),alpha=None)
@@ -94,6 +92,7 @@ plt.tight_layout()
 plt.savefig('pv_psd_highres.pdf', format='pdf', dpi=300)
 plt.savefig('pv_psd_highres.png', format='png', dpi=300)
 plt.show()
+
 # --- Plot PSD for hour 9 only ---
 df_hour9 = df[df.index.hour == 9]
 f_h9, Pxx_h9 = welch(df_hour9['pv_production'].values, fs=fs, nperseg=min(256, len(df_hour9)))
