@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import pvlib
 import requests
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from statsmodels.stats.diagnostic import acorr_ljungbox
+from statsmodels.graphics.gofplots import qqplot
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 import warnings
 warnings.filterwarnings("ignore")
@@ -40,14 +42,7 @@ if weather_data:
     weather_times = hourly.get('time', [])
     cloud = hourly.get('cloudcover_mid', [np.nan]*len(weather_times))
     direct = hourly.get('direct_radiation', [np.nan]*len(weather_times))
-
-    weather_df = pd.DataFrame({
-        'time': pd.to_datetime(weather_times),
-        #'temperature': temp,
-        'cloudcover_mid': cloud,
-        'direct_radiation': direct,
-    }).set_index('time')
-
+    weather_df = pd.DataFrame({'time': pd.to_datetime(weather_times),'cloudcover_mid': cloud,'direct_radiation': direct,}).set_index('time')
     weather_on_pv = weather_df.reindex(df.index, method='nearest')
 else:
     weather_on_pv = pd.DataFrame(index=df.index)
@@ -78,20 +73,11 @@ for h in range(24):
     idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
     y_train_h = y_train_hour.loc[idx_train_h].dropna()
     X_train_h = X_train_hour.loc[idx_train_h].reindex(y_train_h.index).fillna(method='ffill')
-
-    model_h = SARIMAX(
-        endog=y_train_h,
-        exog=X_train_h,
-        order=(p, d, q),
-        enforce_stationarity=True,
-        enforce_invertibility=True,
-        trend='n'
-    )
+    model_h = SARIMAX(endog=y_train_h,exog=X_train_h,order=(p, d, q),enforce_stationarity=True,enforce_invertibility=True,trend='n')
     res_h = model_h.fit(disp=False, maxiter=100)
     hour_models[h] = model_h
 
-
-# --- Automatic model selection per hour (try multiple (p,d,q) orders)
+# --- Automatic model selection per hour ---
 best_orders = {}
 best_results = {}
 
@@ -103,16 +89,13 @@ candidate_orders = [(p, d, q)
 for h in range(24):
     idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
     y_train_h = y_train_hour.loc[idx_train_h].dropna()
-
     X_train_h = X_train_hour.loc[idx_train_h].reindex(y_train_h.index).ffill()
-
     best_aic = np.inf
     best_model = None
     best_res = None
     best_order = None
 
     for order in candidate_orders:
-
         model = SARIMAX(endog=y_train_h, exog=X_train_h, order=order, trend='n', enforce_stationarity=True, enforce_invertibility=True)
         res = model.fit(disp=False)
         if res.aic < best_aic:
@@ -120,8 +103,6 @@ for h in range(24):
             best_model = model
             best_res = res
             best_order = order
-
-
     best_orders[h] = best_order
     best_results[h] = best_res
 
@@ -129,25 +110,17 @@ hour_results = best_results
 
 # --- Evaluate models (AIC, BIC, Ljung-Box) per hour
 model_diagnostics = {}
-from statsmodels.stats.diagnostic import acorr_ljungbox
 
 for h in range(24):
     res = hour_results.get(h)
     aic = res.aic
     bic = res.bic
     ljung = acorr_ljungbox(res.resid, lags=[10], return_df=True)
-
-    model_diagnostics[h] = {
-        'AIC': aic,
-        'BIC': bic,
-        'Order': best_orders[h],
-        'LjungBox_p': ljung['lb_pvalue'].iloc[0]
-    }
+    model_diagnostics[h] = {'AIC': aic,'BIC': bic,'Order': best_orders[h],'LjungBox_p': ljung['lb_pvalue'].iloc[0]}
 
 print("--- Selected Hourly Models ---")
 for h in range(24):
     diag = model_diagnostics[h]
-
     print(f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
 
 # --- Generate residual plots per hour
@@ -197,12 +170,6 @@ mae_hour_mapped = mean_absolute_error(y_val_last, preds_last)
 print(f"RMSE: {rmse_hour_mapped:.3f}")
 print(f"MAE: {mae_hour_mapped:.3f}")
 
-
-
-# ============================================================
-# MODEL DIAGNOSTICS PER HOUR
-# ============================================================
-
 os.makedirs('arimax_model', exist_ok=True)
 os.makedirs('arimax_model/residual_timeseries', exist_ok=True)
 os.makedirs('arimax_model/qq_plots', exist_ok=True)
@@ -220,33 +187,35 @@ plt.plot(y_plot.index, y_plot, label='Test set')
 plt.plot(preds_plot.index, preds_plot, label='Prediction')
 plt.fill_between(preds_plot.index, preds_plot_lower, preds_plot_upper, alpha=0.2, label='95% CI')
 plt.legend()
+plt.ylabel('Normalized PV Production')
+plt.xlabel("Time")
+plt.grid(True)
+plt.ylim(-0.6,1.2)
+plt.xlim(y_plot.index.min(), y_plot.index.max())
 plt.tight_layout()
-plt.savefig(f"arimax_model/plot.pdf")
+plt.savefig(f"arimax_model/arimaxplot.pdf")
 plt.close()
 
 
-
-from statsmodels.graphics.gofplots import qqplot
-
 for h in range(24):
     res = hour_results.get(h)
-    if res is None:
-        continue
-
     resid = res.resid.dropna()
 
-  # 1. Residual time series ---
+    # 1. Residual time series ---------------------------------
     plt.figure(figsize=(8, 3))
-    plt.scatter(resid.index, resid.values, s=10) 
+    plt.scatter(resid.index, resid.values, s=10)  
     plt.axhline(0, color='black', linewidth=0.8)
 
-    plt.title(f"Residual Time Plot - Hour {h}")
+    plt.title(f"Hour {h}")
     plt.ylabel("Residuals")
+    plt.xlabel("Time")
+    plt.xlim(resid.index.min(), resid.index.max())
+    plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"arimax_model/residual_timeseries/hour_{h}_residuals.pdf")
     plt.close()
 
-    # 2. QQ plot ---
+    # 2. QQ plot ----------------------------------------------
     plt.figure(figsize=(4, 4))
     ax = plt.gca()
     qqplot(resid, line='s', ax=ax)
@@ -254,9 +223,10 @@ for h in range(24):
         mk = line.get_marker()
         if mk not in (None, 'None', ''):
             line.set_markersize(3)
-    plt.title(f"Q-Q Plot - Hour {h}")
+    plt.title(f"Hour {h}")
     plt.tight_layout()
+    plt.grid(True)
     plt.savefig(f"arimax_model/qq_plots/hour_{h}_qq.pdf")
     plt.close()
 
-print("Full diagnostic plots saved in 'arimax_model/'")
+ 
