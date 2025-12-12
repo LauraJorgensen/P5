@@ -203,7 +203,7 @@ for h in range(24):
 
     # 1. Residual time series ---------------------------------
     plt.figure(figsize=(8, 3))
-    plt.scatter(resid.index, resid.values, s=10)  
+    plt.scatter(resid.index, resid.values, s=10)  # s = punktstørrelse
     plt.axhline(0, color='black', linewidth=0.8)
 
     plt.title(f"Hour {h}")
