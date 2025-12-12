@@ -13,7 +13,7 @@ latitude = 48.669
 longitude = 12.692
 tz = 'Europe/Berlin'
 site = pvlib.location.Location(latitude, longitude, tz=tz)
-tilt = latitude
+tilt = 20
 azimuth = 180
 clearsky = site.get_clearsky(times)
 solpos = site.get_solarposition(times)
