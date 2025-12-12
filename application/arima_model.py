@@ -7,6 +7,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.stats.diagnostic import acorr_ljungbox
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.graphics.gofplots import qqplot
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -41,13 +42,14 @@ for h in range(24):
         continue
     plt.figure(figsize=(10, 3))
     plt.scatter(series_h.index, series_h.values, s=10)
-    plt.title(f"Hourly Process - Hour {h}")
+    plt.title(f"Hour {h}")
+    plt.ylim(-0.1, 1.1)
     plt.xlabel('Time')
-    plt.ylabel('PV Production')
+    plt.grid(True)
+    plt.ylabel('Normalized PV Production')
     plt.tight_layout()
     plt.savefig(f"hourly_series_plots/hour_{h}_series.pdf")
     plt.close()
-print("Hourly processes plots saved to folder 'hourly_series_plots/'.")
 
 # --- Automatisk modelvalg pr. time ---
 candidate_orders = [(p, d, q)
@@ -67,13 +69,7 @@ for h in range(24):
     best_order = None
 
     for order in candidate_orders:
-        model = SARIMAX(
-            endog=y_train_h,
-            order=order,
-            trend='n',
-            enforce_stationarity=True,
-            enforce_invertibility=True
-        )
+        model = SARIMAX(endog=y_train_h,order=order,trend='n',enforce_stationarity=True,enforce_invertibility=True)
         res = model.fit(disp=False)
         if res.aic < best_aic:
             best_aic = res.aic
@@ -91,24 +87,15 @@ for h in range(24):
     if res is None:
         arima_model[h] = None
         continue
-
     aic = res.aic
     bic = res.bic
     ljung = acorr_ljungbox(res.resid, lags=[10], return_df=True)
-
-    arima_model[h] = {
-        'AIC': aic,
-        'BIC': bic,
-        'Order': best_orders[h],
-        'LjungBox_p': ljung['lb_pvalue'].iloc[0]
-    }
+    arima_model[h] = {'AIC': aic,'BIC': bic,'Order': best_orders[h],'LjungBox_p': ljung['lb_pvalue'].iloc[0]}
 
 print("\n--- Selected Hourly Models ---")
 for h in range(24):
     diag = arima_model[h]
-    print(
-        f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}"
-    )
+    print(f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
 
 # --- ACF & PACF pr. time ---
 os.makedirs('acf_pacf_plots', exist_ok=True)
@@ -118,35 +105,21 @@ for h in range(24):
     y_train_h = y_train_hour.loc[idx_train_h].dropna()
     fig, axes = plt.subplots(1, 2, figsize=(10, 3))
     plot_acf(y_train_h, ax=axes[0], alpha=None)
-    axes[0].set_title(f"ACS Hour {h}")
+    axes[0].grid(True)
+    axes[0].set_title(f"Hour {h}")
+    axes[0].set_ylabel("ACS")
+    axes[0].set_xlabel("Lag")
     plot_pacf(y_train_h, ax=axes[1], method='ywm', alpha=None)
-    axes[1].set_title(f"PACS Hour {h}")
+    axes[1].set_title(f"Hour {h}")
+    axes[1].set_ylabel("PACS")
+    axes[1].set_xlabel("Lag")
+    axes[1].grid(True)
     plt.tight_layout()
     plt.savefig(f"acf_pacf_plots/hour_{h}_acf_pacf.pdf")
     plt.close()
 
-print("ACF/PACF plots saved to folder 'acf_pacf_plots/'.")
 
-# --- QQ plots per hour
-os.makedirs('qq_plots', exist_ok=True)
-from statsmodels.graphics.gofplots import qqplot
-
-for h in range(24):
-    res = hour_results.get(h)
-    if res is None:
-        continue
-
-    fig = plt.figure(figsize=(4,4))
-    qqplot(res.resid, line='s', ax=plt.gca())
-    plt.title(f"QQ Plot Residuals Hour {h}")
-    plt.tight_layout()
-    plt.savefig(f"qq_plots/hour_{h}_qqplot.pdf")
-    plt.close()
-
-print("QQ plots saved to folder 'qq_plots/'.")
-os.makedirs('acf_pacf_plots', exist_ok=True)
-
-# --- Forecast (uden exogene) ---
+# --- Forecast  ---
 preds_hour = []
 preds_hour_lower = []
 preds_hour_upper = []
@@ -191,10 +164,6 @@ print(f"MAE: {mae_hour_mapped:.3f}")
 
 
 
-# ============================================================
-# MODEL DIAGNOSTICS PER HOUR
-# ============================================================
-
 os.makedirs('arima_model', exist_ok=True)
 os.makedirs('arima_model/residual_timeseries', exist_ok=True)
 os.makedirs('arima_model/qq_plots', exist_ok=True)
@@ -206,18 +175,21 @@ preds_plot = preds_15min_from_hour.tail(plot_n)
 preds_plot_lower = preds_15min_lower.tail(plot_n)
 preds_plot_upper = preds_15min_upper.tail(plot_n)
 
-plt.figure(figsize=(12, 5))
+plt.figure(figsize=(10, 5))
 plt.plot(y_plot.index, y_plot, label='Test set')
 plt.plot(preds_plot.index, preds_plot, label='Prediction')
 plt.fill_between(preds_plot.index, preds_plot_lower, preds_plot_upper, alpha=0.2, label='95% CI')
 plt.legend()
+plt.ylabel('Normalized PV Production')
+plt.xlabel("Time")
+plt.grid(True)
+plt.ylim(-0.6,1.2)
+plt.xlim(y_plot.index.min(), y_plot.index.max())
 plt.tight_layout()
-plt.savefig(f"arima_model/plot.pdf")
+plt.savefig(f"arima_model/arimaplot.pdf")
 plt.close()
 
-
-
-from statsmodels.graphics.gofplots import qqplot
+# model diagnostic plots
 
 for h in range(24):
     res = hour_results.get(h)
@@ -228,8 +200,11 @@ for h in range(24):
     plt.scatter(resid.index, resid.values, s=10)  # s = punktstørrelse
     plt.axhline(0, color='black', linewidth=0.8)
 
-    plt.title(f"Residual Time Plot - Hour {h}")
+    plt.title(f"Hour {h}")
     plt.ylabel("Residuals")
+    plt.xlabel("Time")
+    plt.xlim(resid.index.min(), resid.index.max())
+    plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"arima_model/residual_timeseries/hour_{h}_residuals.pdf")
     plt.close()
@@ -242,12 +217,10 @@ for h in range(24):
         mk = line.get_marker()
         if mk not in (None, 'None', ''):
             line.set_markersize(3)
-    plt.title(f"Q-Q Plot - Hour {h}")
+    plt.title(f"Hour {h}")
     plt.tight_layout()
+    plt.grid(True)
     plt.savefig(f"arima_model/qq_plots/hour_{h}_qq.pdf")
     plt.close()
 
  
-
-print("Full diagnostic plots saved in 'arima_model/'")
-
