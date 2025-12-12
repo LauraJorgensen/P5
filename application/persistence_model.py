@@ -96,20 +96,17 @@ print(f"\nRMSE: {rmse:.3f}")
 print(f"MAE: {mae:.3f}")
 
 
-# --- Plot KUN sidste dag ---
+# --- Plot  sidste dag ---
 plt.figure(figsize=(12, 5))
 plt.plot(last_day_test.index, last_day_test, label='Test set')
 plt.plot(last_day_test.index, preds_15min.loc[last_day_test.index], label='Prediction')
-
-# plot CI som shaded area
-plt.fill_between(
-    last_day_test.index,
-    preds_15min_lower.loc[last_day_test.index],
-    preds_15min_upper.loc[last_day_test.index],
-    alpha=0.25,
-    label='95% CI'
-)
-
+plt.ylabel('Normalized PV Production')
+plt.xlabel("Time")
+plt.grid(True)
+plt.ylim(-0.6,1.2)
+plt.xlim(last_day_test.index.min(), last_day_test.index.max())
+plt.tight_layout()
+plt.fill_between(last_day_test.index,preds_15min_lower.loc[last_day_test.index],preds_15min_upper.loc[last_day_test.index],alpha=0.25,label='95% CI')
 plt.legend()
 plt.tight_layout()
 plt.savefig(f"Persistence_Model.pdf")
