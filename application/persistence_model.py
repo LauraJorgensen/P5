@@ -97,7 +97,7 @@ print(f"MAE: {mae:.3f}")
 
 
 # --- Plot  sidste dag ---
-plt.figure(figsize=(12, 5))
+plt.figure(figsize=(10, 5))
 plt.plot(last_day_test.index, last_day_test, label='Test set')
 plt.plot(last_day_test.index, preds_15min.loc[last_day_test.index], label='Prediction')
 plt.ylabel('Normalized PV Production')
