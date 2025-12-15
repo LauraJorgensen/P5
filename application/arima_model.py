@@ -43,7 +43,7 @@ for h in range(24):
     plt.figure(figsize=(10, 3))
     plt.scatter(series_h.index, series_h.values, s=10)
     plt.title(f"Hour {h}")
-    plt.ylim(-0.1, 1.1)
+    plt.xlim(series_h.index.min(), series_h.index.max())
     plt.xlabel('Time')
     plt.grid(True)
     plt.ylabel('Normalized PV Production')
@@ -129,7 +129,7 @@ for h in range(24):
     res_h = hour_results.get(h)
     future_idx = y_val_hour.index[y_val_hour.index.hour == h]
 
-    # Multi-step forecast fra træningsslut antal skridt afhænger af antal timestamps i validering for denne time
+    # Forecast fra træningssættet. Antal steps afhænger af timen. 
     steps = len(future_idx)
     pred_res = res_h.get_forecast(steps=steps)
     means = pred_res.predicted_mean
@@ -161,7 +161,6 @@ mae_hour_mapped = mean_absolute_error(y_val_last, preds_last)
 
 print(f"\nRMSE: {rmse_hour_mapped:.3f}")
 print(f"MAE: {mae_hour_mapped:.3f}")
-
 
 
 os.makedirs('arima_model', exist_ok=True)
@@ -223,4 +222,3 @@ for h in range(24):
     plt.savefig(f"arima_model/qq_plots/hour_{h}_qq.pdf")
     plt.close()
 
- 
