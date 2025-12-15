@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-np.random.seed(42)
+np.random.seed(43)
 T = 100  # Number of time steps
-mu = 0.5
+mu = 0
 sigma = 1.0
 
 # Generate white noise
