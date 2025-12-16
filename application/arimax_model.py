@@ -12,16 +12,22 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 import warnings
 warnings.filterwarnings("ignore")
 
-# --- Konfiguration samt data læsning---
+# --- Konfiguration ---
+os.makedirs('arimax_model', exist_ok=True)
+os.makedirs('arimax_model/residual_timeseries', exist_ok=True)
+os.makedirs('arimax_model/qq_plots', exist_ok=True)
+
 csv_path = 'data/pv_production_june_clean.csv'
 target_col = 'pv_production'
 latitude, longitude = 48.6727, 12.6931
-period = 96
+period = 96 # antal kvarter på et døgn
 
 df = pd.read_csv(csv_path, parse_dates=['timestamp'])
 df.set_index('timestamp', inplace=True)
 y = df[target_col].astype(float)
 
+
+# --- Import og align exogenous variables ---
 def fetch_open_meteo_data(url):
     r = requests.get(url)
     if r.status_code == 200:
@@ -49,7 +55,7 @@ else:
 
 X = weather_on_pv.copy()
 
-# --- Split til Train og Validation ---
+# --- Inddel test og training set på 15-min data ---
 val_h = int(period * 1.5)  # 36 timer
 
 X_train, X_val = X.iloc[:-val_h, :], X.iloc[-val_h:, :]
@@ -59,32 +65,20 @@ y_train, y_val = y.iloc[:-val_h], y.iloc[-val_h:]
 y_hour = y.resample('H').mean()
 X_hour = X.resample('H').mean()
 
+# --- Inddel test og training set på hourly data ---
 val_h_hours = int(val_h / 4)
 y_train_hour, y_val_hour = y_hour.iloc[:-val_h_hours], y_hour.iloc[-val_h_hours:]
 X_train_hour = X_hour.iloc[:-val_h_hours, :]
 X_val_hour = X_hour.iloc[-val_h_hours:, :]
 
-# --- Kun timemodeller  ---
-hour_models = {}
-hour_results = {}
-p, d, q = 2, 1, 0
-
-for h in range(24):
-    idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
-    y_train_h = y_train_hour.loc[idx_train_h].dropna()
-    X_train_h = X_train_hour.loc[idx_train_h].reindex(y_train_h.index).fillna(method='ffill')
-    model_h = SARIMAX(endog=y_train_h,exog=X_train_h,order=(p, d, q),enforce_stationarity=True,enforce_invertibility=True,trend='n')
-    res_h = model_h.fit(disp=False, maxiter=100)
-    hour_models[h] = model_h
-
-# --- Automatic model selection per hour ---
-best_orders = {}
-best_results = {}
-
+# --- Automatisk modelvalg pr. time ---
 candidate_orders = [(p, d, q)
     for p in range(0, 4)
     for d in range(0, 2)
     for q in range(0, 4)]
+
+best_orders = {}
+best_results = {}
 
 for h in range(24):
     idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
@@ -108,7 +102,7 @@ for h in range(24):
 
 hour_results = best_results
 
-# --- Evaluate models (AIC, BIC, Ljung-Box) per hour
+# --- Diagnostics pr. time ---
 model_diagnostics = {}
 
 for h in range(24):
@@ -123,12 +117,7 @@ for h in range(24):
     diag = model_diagnostics[h]
     print(f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
 
-# --- Generate residual plots per hour
-import matplotlib.pyplot as plt
-import os
-os.makedirs('residual_plots', exist_ok=True)
-
-# --- Forecast hourly ---
+# --- Forecast ---
 preds_hour = []
 preds_hour_lower = []
 preds_hour_upper = []
@@ -153,14 +142,13 @@ preds_hour_series = pd.Series(preds_hour, index=idxs)
 preds_hour_lower_series = pd.Series(preds_hour_lower, index=idxs)
 preds_hour_upper_series = pd.Series(preds_hour_upper, index=idxs)
 
-# --- Map til 15-min ved at forward fill ---
+# --- Map til 15-min ---
 preds_15min_from_hour = preds_hour_series.reindex(y_val.index, method='ffill')
 preds_15min_lower = preds_hour_lower_series.reindex(y_val.index, method='ffill')
 preds_15min_upper = preds_hour_upper_series.reindex(y_val.index, method='ffill')
 
-# --- Brug kun de sidste 24 timer til at plotte ---
+# --- Model evaluation metrics for last 24 timer ---
 last_n = 96
-
 y_val_last = y_val.tail(last_n)
 preds_last = preds_15min_from_hour.tail(last_n)
 
@@ -170,12 +158,7 @@ mae_hour_mapped = mean_absolute_error(y_val_last, preds_last)
 print(f"RMSE: {rmse_hour_mapped:.3f}")
 print(f"MAE: {mae_hour_mapped:.3f}")
 
-os.makedirs('arimax_model', exist_ok=True)
-os.makedirs('arimax_model/residual_timeseries', exist_ok=True)
-os.makedirs('arimax_model/qq_plots', exist_ok=True)
-
-
-# --- Plot ---
+# --- Plot forecast vs obs for last 24 timer ---
 plot_n = 24 * 4# 24 timer * 4 (15-min) = 96 punkter
 y_plot = y_val.tail(plot_n)
 preds_plot = preds_15min_from_hour.tail(plot_n)
@@ -196,12 +179,12 @@ plt.tight_layout()
 plt.savefig(f"arimax_model/arimaxplot.pdf")
 plt.close()
 
-
+# --- Model diagnostic plots ---
 for h in range(24):
     res = hour_results.get(h)
     resid = res.resid.dropna()
 
-    # 1. Residual time series ---------------------------------
+    # --- Residual time series ---
     plt.figure(figsize=(8, 3))
     plt.scatter(resid.index, resid.values, s=10)  # s = punktstørrelse
     plt.axhline(0, color='black', linewidth=0.8)
@@ -215,7 +198,7 @@ for h in range(24):
     plt.savefig(f"arimax_model/residual_timeseries/hour_{h}_residuals.pdf")
     plt.close()
 
-    # 2. QQ plot ----------------------------------------------
+    # --- QQ plot ---
     plt.figure(figsize=(4, 4))
     ax = plt.gca()
     qqplot(resid, line='s', ax=ax)
