@@ -162,7 +162,7 @@ print(f"\nRMSE: {rmse_hour_mapped:.3f}")
 print(f"MAE: {mae_hour_mapped:.3f}")
 
 # --- Plot forecast vs obs for last 24 timer ---
-plot_n = 24 * 4  # vis kun sidste 36 timer (144 punkter)
+plot_n = 24 * 4  
 y_plot = y_val.tail(plot_n)
 preds_plot = preds_15min_from_hour.tail(plot_n)
 preds_plot_lower = preds_15min_lower.tail(plot_n)
