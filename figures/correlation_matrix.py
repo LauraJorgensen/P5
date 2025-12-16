@@ -13,9 +13,7 @@ df = pd.read_csv(csv_path, parse_dates=['timestamp'])
 df.set_index('timestamp', inplace=True)
 y = df[target_col].astype(float)
 
-
-#få vejrdata
-
+# --- hent vejrdata --- 
 def fetch_open_meteo_data(url):
     r = requests.get(url)
     if r.status_code == 200:
@@ -24,12 +22,9 @@ def fetch_open_meteo_data(url):
         print("Error fetching Open-Meteo data:", r.status_code)
         return None
 
-
 pv_times = df.index.strftime('%Y-%m-%dT%H:%M')
 start_date = pv_times[0][:10]
 end_date   = pv_times[-1][:10]
-
-# url
 
 weather_url = (
     f"https://archive-api.open-meteo.com/v1/archive?"
@@ -40,16 +35,11 @@ weather_url = (
     f"&timezone=Europe/Berlin"
 )
 
-
-# hent vejrdata
-
 weather_data = fetch_open_meteo_data(weather_url)
 
 if weather_data:
-
     hourly = weather_data.get('hourly', {})
     weather_times = hourly.get('time', [])
-
 
     weather_df = pd.DataFrame({
         "time": pd.to_datetime(weather_times),
@@ -61,38 +51,17 @@ if weather_data:
         "cloudcover_mid": hourly.get("cloudcover_mid"),
         "cloudcover_high": hourly.get("cloudcover_high")
     }).set_index("time")
-
-    # align timestamps
     weather_on_pv = weather_df.reindex(df.index, method="nearest")
-
 else:
-    print("No weather data fetched.")
     weather_on_pv = pd.DataFrame(index=df.index)
 
-
-# heatmap of correlation matrix
-
+# --- Correlation matrix --- 
 mask = np.triu(np.ones_like(corr, dtype=bool), k=0) 
-
 plt.figure(figsize=(10, 8))
 sns.set_style("white")
-
-ax = sns.heatmap(
-    corr,
-    mask=~mask,         
-    cmap='RdBu',
-    vmin=-1, vmax=1,
-    annot=True,
-    fmt=".2f",
-    linewidths=0.6,
-    linecolor="white",
-    cbar_kws={"label": "Corr"},
-    square=True
-)
-
+ax = sns.heatmap(corr,mask=~mask,cmap='RdBu',vmin=-1, vmax=1,annot=True,fmt=".2f",linewidths=0.6,linecolor="white",cbar_kws={"label": "Corr"},square=True)
 plt.xticks(rotation=50, ha='right')
 plt.yticks(rotation=0)
-
 plt.tight_layout()
 plt.savefig(f"corr_matrix.pdf")
 plt.close()
