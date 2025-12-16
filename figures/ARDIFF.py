@@ -2,23 +2,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 np.random.seed(43)
-T = 100  # Number of time steps
+T = 100 
 mu = 0
 sigma = 1.0
 
-# Generate white noise
+# --- Generate white noise --- 
 w = np.random.normal(0, sigma, T)
 
-# AR(1) process 
+# --- Generate realization --- 
 x = np.zeros(T)
 x[0] = 0
 for t in range(1, T):
     x[t] = mu + x[t-1] + w[t]
 
-# Differenced process
+# --- Differenced process --- 
 y = x[1:] - x[:-1]
 
-# Plot AR(1) process
+# --- Plot --- 
 plt.figure(figsize=(10, 4))
 plt.plot(x, label='$x_t$')
 plt.plot(y, label='$\\nabla x_t$')
