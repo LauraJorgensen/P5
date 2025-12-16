@@ -12,22 +12,18 @@ latitude, longitude = 48.6727, 12.6931  # Landau a. d. Isar
 year = 2025
 times = pd.date_range(start=f'{year}-01-01', end=f'{year}-12-31 23:45', freq='15min', tz='Europe/Berlin')
 
-# hent clearsky data
+df = pd.read_csv('data/pv_production_june_clean.csv', parse_dates=['timestamp'])
+df.set_index('timestamp', inplace=True)
+
+# --- Simuler årlig solcelleproduktion --- 
 location = pvlib.location.Location(latitude, longitude)
 clearsky = location.get_clearsky(times)
 Bt = clearsky['ghi'].values
 
-# tilføj støj, men kun hvis clearsky > 0.1
 noise = np.random.normal(-200, 0.10 * np.max(Bt), size=Bt.shape)
 Bt_noisy = np.where(Bt >= 0.1, Bt + noise, Bt)
 Bt_noisy = np.maximum(Bt_noisy, 0)
-
-# normaliser
 Bt_noisy_norm = Bt_noisy / np.max(Bt_noisy + 225)
-
-# --- Udglat med dagligt gennemsnit ---
-df_plot = pd.DataFrame({'norm_prod': Bt_noisy_norm}, index=times)
-df_daily = df_plot.resample('D').mean()
 
 # --- Plot normeret clearsky + noise ---
 plt.figure(figsize=(10, 4))
@@ -41,27 +37,21 @@ plt.tight_layout()
 plt.savefig('clearsky_noise_highres_norm.pdf')
 plt.close()
 
-# --- Indlæs data ---
-df = pd.read_csv('data\pv_production_june.csv', parse_dates=['timestamp'])
-df.set_index('timestamp', inplace=True)
-
-# --- Udvælg sidste uge ---
+# --- Udvælg og plot sidste uge i dataset ---
 last_week_start = df.index[-1] - pd.Timedelta(days=7)
 df_last_week = df[df.index >= last_week_start]
 
-# --- Plot sidste uge ---
 plt.figure(figsize=(10, 4))
 plt.plot(df_last_week.index, df_last_week['pv_production'], linewidth=1.2, label='PV Production')
 plt.ylim(0, 1)
 plt.grid(True)
 plt.xlabel('Time')
 plt.ylabel('Normalized PV Production')
-
 plt.tight_layout()
 plt.savefig('pv_last_week_highres.pdf')
 plt.close()
 
-# --- Plot ACF ---
+# --- Plot ACS for hele dataset---
 plt.figure(figsize=(6, 4))
 ax = plt.gca()
 plot_acf(df['pv_production'], lags=200, ax=ax, alpha=None)
@@ -90,9 +80,7 @@ plt.close()
 
 # --- Plot PSD kun for time 12 ---
 df_hour12 = df[df.index.hour == 12]
-f_h12, Pxx_h12 = welch(df_hour12['pv_production'].values, fs=fs,
-                    nperseg=min(256, len(df_hour12)))
-
+f_h12, Pxx_h12 = welch(df_hour12['pv_production'].values, fs=fs,nperseg=min(256, len(df_hour12)))
 plt.figure(figsize=(6, 4))
 plt.semilogy(f_h12, Pxx_h12)
 plt.xlabel('Frequency [1/hour]')
