@@ -83,7 +83,7 @@ for h in range(24):
     best_orders[h] = best_order
     hour_results[h] = best_res
 
-# --- Diagnostics (AIC, BIC, Ljung-Box) pr. time ---
+# --- Diagnostics pr. time ---
 arima_model = {}
 
 for h in range(24):
@@ -120,7 +120,6 @@ for h in range(24):
     plt.savefig(f"acf_pacf_plots/hour_{h}_acf_pacf.pdf")
     plt.close()
 
-
 # --- Forecast  ---
 preds_hour = []
 preds_hour_lower = []
@@ -131,13 +130,11 @@ for h in range(24):
     res_h = hour_results.get(h)
     future_idx = y_val_hour.index[y_val_hour.index.hour == h]
 
-    # Forecast fra træningssættet. Antal steps afhænger af timen. 
-    steps = len(future_idx)
+    steps = len(future_idx) # Antal steps afhænger af timen. 
     pred_res = res_h.get_forecast(steps=steps)
     means = pred_res.predicted_mean
     ci = pred_res.conf_int(alpha=0.05)
 
-    # Tilknyt hvert forecast-skridt til tilsvarende timestamp
     for i, t_idx in enumerate(future_idx):
         preds_hour.append(float(means.iloc[i]))
         preds_hour_lower.append(float(ci.iloc[i, 0]))
