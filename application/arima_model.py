@@ -26,14 +26,14 @@ df = pd.read_csv(csv_path, parse_dates=['timestamp'])
 df.set_index('timestamp', inplace=True)
 y = df[target_col].astype(float)
 
-# --- Test/training set på 15-min data ---
+# --- Inddel test og training set på 15-min data ---
 val_h = int(period * 1.5)  # 36 timer 
 y_train, y_val = y.iloc[:-val_h], y.iloc[-val_h:]
 
 # --- Resample til hourly ---
 y_hour = y.resample('h').mean()
 
-# --- Test/training set på hourly data ---
+# --- Inddel test og training set på hourly data ---
 val_h_hours = int(val_h / 4)  # 4 * 15min = 1 time
 y_train_hour = y_hour.iloc[:-val_h_hours]
 y_val_hour = y_hour.iloc[-val_h_hours:]
