@@ -11,8 +11,13 @@ from statsmodels.graphics.gofplots import qqplot
 import warnings
 warnings.filterwarnings("ignore")
 
+# --- Konfiguration ---
+os.makedirs('hourly_series_plots', exist_ok=True)
+os.makedirs('acf_pacf_plots', exist_ok=True)
+os.makedirs('arima_model', exist_ok=True)
+os.makedirs('arima_model/residual_timeseries', exist_ok=True)
+os.makedirs('arima_model/qq_plots', exist_ok=True)
 
-# --- Konfiguration samt data læsning---
 csv_path = 'data/pv_production_june_clean.csv'
 target_col = 'pv_production'
 period = 96  # antal kvarter på et døgn
@@ -21,20 +26,19 @@ df = pd.read_csv(csv_path, parse_dates=['timestamp'])
 df.set_index('timestamp', inplace=True)
 y = df[target_col].astype(float)
 
-# --- Train/Validation split på 15-min data ---
-val_h = int(period * 1.5)  # 1.5 * period (96) = 144 => 36 timer (test set)
+# --- Test/training set på 15-min data ---
+val_h = int(period * 1.5)  # 36 timer 
 y_train, y_val = y.iloc[:-val_h], y.iloc[-val_h:]
 
 # --- Resample til hourly ---
 y_hour = y.resample('h').mean()
 
-# --- Opret hourly train/validation split (vigtigt) ---
+# --- Test/training set på hourly data ---
 val_h_hours = int(val_h / 4)  # 4 * 15min = 1 time
 y_train_hour = y_hour.iloc[:-val_h_hours]
 y_val_hour = y_hour.iloc[-val_h_hours:]
 
 # --- Plot hver time  ---
-os.makedirs('hourly_series_plots', exist_ok=True)
 for h in range(24):
     idx_h = y_hour.index[y_hour.index.hour == h]
     series_h = y_hour.loc[idx_h].dropna()
@@ -98,8 +102,6 @@ for h in range(24):
     print(f"Hour {h}: Order={diag['Order']}, AIC={diag['AIC']:.2f}, LjungBox_p={diag['LjungBox_p']:.4f}")
 
 # --- ACF & PACF pr. time ---
-os.makedirs('acf_pacf_plots', exist_ok=True)
-
 for h in range(24):
     idx_train_h = y_train_hour.index[y_train_hour.index.hour == h]
     y_train_h = y_train_hour.loc[idx_train_h].dropna()
@@ -142,16 +144,16 @@ for h in range(24):
         preds_hour_upper.append(float(ci.iloc[i, 1]))
         idxs.append(t_idx)
 
-# Byg serier og map til 15-min
 preds_hour_series = pd.Series(preds_hour, index=idxs).sort_index()
 preds_hour_lower_series = pd.Series(preds_hour_lower, index=idxs).sort_index()
 preds_hour_upper_series = pd.Series(preds_hour_upper, index=idxs).sort_index()
 
+# --- Map til 15-min ---
 preds_15min_from_hour = preds_hour_series.reindex(y_val.index, method='ffill')
 preds_15min_lower = preds_hour_lower_series.reindex(y_val.index, method='ffill')
 preds_15min_upper = preds_hour_upper_series.reindex(y_val.index, method='ffill')
 
-# --- Brug kun de sidste 24 timer---
+# --- Model evaluation metrics for last 24 timer ---
 last_n = 96
 y_val_last = y_val.tail(last_n)
 preds_last = preds_15min_from_hour.tail(last_n)
@@ -162,12 +164,7 @@ mae_hour_mapped = mean_absolute_error(y_val_last, preds_last)
 print(f"\nRMSE: {rmse_hour_mapped:.3f}")
 print(f"MAE: {mae_hour_mapped:.3f}")
 
-
-os.makedirs('arima_model', exist_ok=True)
-os.makedirs('arima_model/residual_timeseries', exist_ok=True)
-os.makedirs('arima_model/qq_plots', exist_ok=True)
-
-# --- Plot forecast vs obs ---
+# --- Plot forecast vs obs for last 24 timer ---
 plot_n = 24 * 4  # vis kun sidste 36 timer (144 punkter)
 y_plot = y_val.tail(plot_n)
 preds_plot = preds_15min_from_hour.tail(plot_n)
@@ -188,17 +185,15 @@ plt.tight_layout()
 plt.savefig(f"arima_model/arimaplot.pdf")
 plt.close()
 
-# model diagnostic plots
-
+# --- Model diagnostic plots ---
 for h in range(24):
     res = hour_results.get(h)
     resid = res.resid.dropna()
 
-    # 1. Residual time series ---------------------------------
+    # --- Residual time series ---
     plt.figure(figsize=(8, 3))
     plt.scatter(resid.index, resid.values, s=10)  # s = punktstørrelse
     plt.axhline(0, color='black', linewidth=0.8)
-
     plt.title(f"Hour {h}")
     plt.ylabel("Residuals")
     plt.xlabel("Time")
@@ -208,7 +203,7 @@ for h in range(24):
     plt.savefig(f"arima_model/residual_timeseries/hour_{h}_residuals.pdf")
     plt.close()
 
-    # 2. QQ plot ----------------------------------------------
+    # --- QQ plot ---
     plt.figure(figsize=(4, 4))
     ax = plt.gca()
     qqplot(resid, line='s', ax=ax)
